@@ -69,17 +69,17 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 
 ## 4. Slash Commands Overview
 
-| Command                   | Access Tier                     | Behavior                                                                                                      |
-| ------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `/verify`                 | Everyone                        | Verifies new candidates in one step or restores returning verified accounts, replying publicly in the channel |
-| `Verify Account` button   | Everyone                        | Opens the same one-step verification or restoration flow with ephemeral responses                             |
-| `/student lookup`         | Server Owner and moderator role | Displays stored student full name, computed nickname, challenge flags, and team name                          |
-| `/student register`       | Server Owner and moderator role | Manually registers or overrides a student record and Discord roles for support resolution                     |
-| `/student reset`          | Server Owner and moderator role | Deletes a student record from SQLite and strips recruitment roles                                             |
-| `/challenge advance`      | Server Owner and owner role     | Bulk promotes candidates between stages with optional `exclude` or `only` user filters                        |
-| `/challenge revoke`       | Server Owner and owner role     | Bulk removes a stage role from selected users via inline mentions, IDs, or multi-user select menu             |
-| `/challenge verify`       | Server Owner and owner role     | Enables or disables new `/verify` registrations dynamically                                                   |
-| `/challenge verify-panel` | Server Owner and owner role     | Posts or updates the persistent verification button embed in any selected text channel                        |
+| Command                   | Access Tier         | Behavior                                                                                                      |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `/verify`                 | Everyone            | Verifies new candidates in one step or restores returning verified accounts, replying publicly in the channel |
+| `Verify Account` button   | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                             |
+| `/student lookup`         | Owner and Moderator | Displays stored student full name, computed nickname, challenge flags, and team name                          |
+| `/student register`       | Owner and Moderator | Manually registers or overrides a student record and Discord roles for support resolution                     |
+| `/student reset`          | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles                                             |
+| `/challenge advance`      | Owner               | Bulk promotes candidates between stages with optional `exclude` or `only` user filters                        |
+| `/challenge revoke`       | Owner               | Bulk removes a stage role from selected users via inline mentions, IDs, or multi-user select menu             |
+| `/challenge verify`       | Owner               | Enables or disables new `/verify` registrations dynamically                                                   |
+| `/challenge verify-panel` | Owner               | Posts or updates the persistent verification button embed in any selected text channel                        |
 
 ---
 
