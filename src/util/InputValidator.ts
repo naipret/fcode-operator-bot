@@ -112,12 +112,13 @@ function validateFullName(
   rawFullName: string,
   fullNameRegexPattern: string,
 ): FullNameValidationResult {
+  const genericError = 'The provided full name is invalid. Please double-check and try again.';
   const trimmed = rawFullName.normalize('NFC').trim().replaceAll(/\s+/g, ' ');
   const fullNameRegex = new RegExp(fullNameRegexPattern, 'u');
   if (!fullNameRegex.test(trimmed)) {
     return {
       valid: false,
-      error: 'Full name must contain only alphabetic characters and spaces (2 to 60 characters).',
+      error: genericError,
     };
   }
 
@@ -125,7 +126,7 @@ function validateFullName(
   if (words.length < 2) {
     return {
       valid: false,
-      error: 'Please enter your complete full name containing at least two words.',
+      error: genericError,
     };
   }
 
@@ -134,7 +135,7 @@ function validateFullName(
   if (pascalName.length < 2) {
     return {
       valid: false,
-      error: 'Full name could not be normalized into valid ASCII alphabetic characters.',
+      error: genericError,
     };
   }
 
@@ -149,32 +150,31 @@ function validateFullName(
  * @returns a typed validation result containing uppercase studentId and cohort digits
  */
 function validateStudentId(rawStudentId: string, botConfig: BotConfig): StudentIdValidationResult {
+  const genericError =
+    'The provided Student ID is invalid or not eligible for this recruitment cycle. Please double-check your information or contact support.';
   const normalizedId = rawStudentId.trim().toUpperCase();
   const pattern = new RegExp(botConfig.studentIdRegex);
   const match = pattern.exec(normalizedId);
   if (!match) {
     return {
       valid: false,
-      error:
-        'Student ID must follow the official format of two letters followed by six digits (for example, SE220001).',
+      error: genericError,
     };
   }
 
   const prefix = normalizedId.slice(0, 2);
   if (!botConfig.allowedStudentIdPrefixes.includes(prefix)) {
-    const allowedPrefixLabels = botConfig.allowedStudentIdPrefixes.join(', ');
     return {
       valid: false,
-      error: `Student ID prefix \`${prefix}\` is not recognized for FPTU HCMC. Allowed prefixes: ${allowedPrefixLabels}.`,
+      error: genericError,
     };
   }
 
   const cohort = match[1];
   if (!cohort || !botConfig.allowedCohorts.includes(cohort)) {
-    const allowedLabels = botConfig.allowedCohorts.map((code) => `K${code}`).join(', ');
     return {
       valid: false,
-      error: `Student ID cohort K${cohort ?? '??'} is not eligible for this recruitment cycle. Allowed cohorts: ${allowedLabels}.`,
+      error: genericError,
     };
   }
 
