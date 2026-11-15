@@ -22,9 +22,18 @@ permissions:
     challenge3: ''
   teamRolePrefix: 'team-'
 
+database:
+  directory: './data'
+
+logging:
+  level: 'info'
+  console: true
+  file: true
+  directory: './logs'
+
 messages:
   verificationPanelTitle: 'F-Code Recruitment Verification'
-  verificationPanelDescription: "Welcome to the F-Code Club recruitment server.\n\nClick the button below to verify your student identity, receive your standardized nickname (`{prefix}_FullName_StudentID`), and unlock Challenge 1.\n\nOnly FPT University students from cohorts {cohorts} are eligible to register."
+  verificationPanelDescription: "Welcome to the F-Code Club recruitment server.\n\nClick the button below to verify your student identity, receive your standardized nickname (`{prefix}_FullName_StudentID`), and unlock Challenge 1."
   verificationPanelButtonLabel: 'Verify Account'
   verificationClosedMessage: 'Verification is currently closed by the server administrator.'
   verificationSuccessTitle: 'Verification Complete'

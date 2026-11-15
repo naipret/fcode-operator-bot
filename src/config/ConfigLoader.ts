@@ -78,10 +78,6 @@ function loadEnvironment(
 ): EnvironmentConfig {
   const normalizedEnv = {
     ...envSource,
-    DATABASE_PATH:
-      envSource.DATABASE_PATH && envSource.DATABASE_PATH.trim().length > 0
-        ? envSource.DATABASE_PATH
-        : undefined,
     CONFIG_PATH:
       envSource.CONFIG_PATH && envSource.CONFIG_PATH.trim().length > 0
         ? envSource.CONFIG_PATH
@@ -97,10 +93,22 @@ function loadEnvironment(
 }
 
 /**
+ * Resolves the SQLite database file path dynamically from the configured directory and club cohort prefix.
+ *
+ * @param appConfig the validated application configuration
+ * @returns normalized path such as data/recruitment-f22.db
+ */
+function resolveDatabasePath(appConfig: AppConfig): string {
+  const prefix = appConfig.bot.clubCohortPrefix.toLowerCase();
+  return path.join(appConfig.database.directory, `recruitment-${prefix}.db`);
+}
+
+/**
  * Loads and validates YAML application configuration and runtime environment variables.
  */
 export const ConfigLoader = {
   loadAppConfig,
   getAppConfig,
   loadEnvironment,
+  resolveDatabasePath,
 } as const;

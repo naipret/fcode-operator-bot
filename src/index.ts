@@ -115,7 +115,8 @@ async function bootstrap(): Promise<void> {
   const environment = ConfigLoader.loadEnvironment();
   const appConfig = ConfigLoader.loadAppConfig(environment.CONFIG_PATH);
 
-  const databaseClient = new DatabaseClient(environment.DATABASE_PATH);
+  const databasePath = ConfigLoader.resolveDatabasePath(appConfig);
+  const databaseClient = new DatabaseClient(databasePath);
   const studentRepository = new StudentRepository(databaseClient);
   studentRepository.seedVerificationGateDefault(appConfig.verification.enabledByDefault);
 

@@ -35,6 +35,15 @@ export const appConfigSchema = z.object({
     }),
     teamRolePrefix: z.string().trim().min(1),
   }),
+  database: z.object({
+    directory: z.string().trim().min(1),
+  }),
+  logging: z.object({
+    level: z.enum(['debug', 'info', 'warn', 'error']),
+    console: z.boolean(),
+    file: z.boolean(),
+    directory: z.string().trim().min(1),
+  }),
   messages: z.object({
     verificationPanelTitle: z.string().min(1),
     verificationPanelDescription: z.string().min(1),
@@ -56,7 +65,6 @@ export const environmentSchema = z.object({
     .min(10, 'DISCORD_APPLICATION_TOKEN is empty or invalid.'),
   DISCORD_APPLICATION_ID: snowflakeSchema,
   DISCORD_SERVER_ID: snowflakeSchema,
-  DATABASE_PATH: z.string().trim().min(1).default('./data/operator.db'),
   CONFIG_PATH: z.string().trim().min(1).default('./config.yaml'),
 });
 
@@ -69,6 +77,11 @@ export type AppConfig = z.infer<typeof appConfigSchema>;
  * Strongly typed bot naming and validation configuration subset.
  */
 export type BotConfig = AppConfig['bot'];
+
+/**
+ * Strongly typed logging configuration subset.
+ */
+export type LoggingConfig = AppConfig['logging'];
 
 /**
  * Strongly typed runtime environment configuration derived from environmentSchema.
