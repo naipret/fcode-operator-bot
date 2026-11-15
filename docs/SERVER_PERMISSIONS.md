@@ -63,6 +63,8 @@ Every channel uses Unicode 6.0 emojis paired with `kebab-case` English names so 
 
 ## 4. Slash Command Authorization Matrix
 
+All slash commands (`/verify`, `/student`, `/challenge`) reply publicly in the invoking channel so staff and candidates can observe command outcomes directly. Only the persistent `Verify Account` button in `#✅・verification` uses ephemeral responses to keep the verification channel clean.
+
 | Command                 | Subcommand     | Authorized Caller                              | Purpose                                                                                                |
 | ----------------------- | -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `/verify`               | Default        | Every guild member                             | Verifies new candidates in one step or restores returning verified members with public channel replies |

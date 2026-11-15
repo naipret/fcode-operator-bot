@@ -48,7 +48,9 @@ Two mechanisms prevent overload during recruitment registration peaks:
 
 ## 3. SQLite Database Schema
 
-Storage relies on Node's built-in `node:sqlite` (`DatabaseSync`) configured in `WAL` journal mode with a 5000-millisecond busy timeout. The `data/` directory is created dynamically at startup when `DatabaseClient` initializes `data/operator.db` (or the path configured in `DATABASE_PATH`).
+Storage relies on Node's built-in `node:sqlite` (`DatabaseSync`) configured in `WAL` journal mode with a 5000-millisecond busy timeout. The directory configured in `database.directory` (`./data` by default) is created dynamically at startup when `DatabaseClient` initializes `recruitment-<prefix>.db` (derived from `bot.clubCohortPrefix` in lowercase, such as `data/recruitment-f22.db`).
+
+Operational logging uses `pino` configured via `logging` in `config.yaml`: pretty-printed output to stdout (`pino-pretty`) when `logging.console` is `true`, and structured JSON lines written to midnight-rotating daily files (`logs/YYYY-MM-DD.log`) under `logging.directory` when `logging.file` is `true`.
 
 ### Table `students`
 

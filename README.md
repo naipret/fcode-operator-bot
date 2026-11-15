@@ -6,14 +6,15 @@ Configuration-driven Discord recruitment bot for F-Code Club at FPT University. 
 
 ## 1. Technical Stack and Constraints
 
-| Component       | Specification                                                                                      |
-| --------------- | -------------------------------------------------------------------------------------------------- |
-| Runtime         | Node.js LTS (`>= 22.15.0`)                                                                         |
-| Language        | TypeScript (`strict: true`, `noUncheckedIndexedAccess: true`)                                      |
-| Discord SDK     | `discord.js` v14 with Gateway `Guilds` and `GuildMembers` intents                                  |
-| Persistence     | Built-in `node:sqlite` (`DatabaseSync` in `WAL` mode, stored at `data/operator.db`)                |
-| Validation      | `Zod` for `config.yaml` and environment variables with itemized startup error reporting            |
-| Quality Tooling | ESLint with TypeScript type checking, Prettier, Husky Git hooks, Commitlint, and GitHub Actions CI |
+| Component       | Specification                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| Runtime         | Node.js LTS (`>= 22.15.0`)                                                                              |
+| Language        | TypeScript (`strict: true`, `noUncheckedIndexedAccess: true`)                                           |
+| Discord SDK     | `discord.js` v14 with Gateway `Guilds` and `GuildMembers` intents                                       |
+| Persistence     | Built-in `node:sqlite` (`DatabaseSync` in `WAL` mode, stored at `data/recruitment-<prefix>.db`)         |
+| Logging         | `pino` with `pino-pretty` console output and midnight-rotating daily JSON files (`logs/YYYY-MM-DD.log`) |
+| Validation      | `Zod` for `config.yaml` and environment variables with itemized startup error reporting                 |
+| Quality Tooling | ESLint with TypeScript type checking, Prettier, Husky Git hooks, Commitlint, and GitHub Actions CI      |
 
 ---
 
@@ -58,28 +59,28 @@ npm run lint
 npm run dev
 ```
 
-For Docker builds and container execution, mount `.env`, `config.yaml`, and the persistent `data/` volume:
+For Docker builds and container execution, mount `.env`, `config.yaml`, and the persistent `data/` and `logs/` volumes:
 
 ```bash
 docker build -t fcode-operator-bot .
-docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/app/config.yaml:ro -v $(pwd)/data:/app/data fcode-operator-bot
+docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/app/config.yaml:ro -v $(pwd)/data:/app/data -v $(pwd)/logs:/app/logs fcode-operator-bot
 ```
 
 ---
 
 ## 4. Slash Commands Overview
 
-| Command                   | Access Tier         | Behavior                                                                                                      |
-| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `/verify`                 | Everyone            | Verifies new candidates in one step or restores returning verified accounts, replying publicly in the channel |
-| `Verify Account` button   | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                             |
-| `/student lookup`         | Owner and Moderator | Displays stored student full name, computed nickname, challenge flags, and team name                          |
-| `/student register`       | Owner and Moderator | Manually registers or overrides a student record and Discord roles for support resolution                     |
-| `/student reset`          | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles                                             |
-| `/challenge advance`      | Owner               | Bulk promotes candidates between stages with optional `exclude` or `only` user filters                        |
-| `/challenge revoke`       | Owner               | Bulk removes a stage role from selected users via inline mentions, IDs, or multi-user select menu             |
-| `/challenge verify`       | Owner               | Enables or disables new `/verify` registrations dynamically                                                   |
-| `/challenge verify-panel` | Owner               | Posts or updates the persistent verification button embed in any selected text channel                        |
+| Command                   | Access Tier         | Behavior                                                                                                                            |
+| ------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `/verify`                 | Everyone            | Verifies new candidates (strictly 8-character student ID) or restores returning verified accounts, replying publicly in the channel |
+| `Verify Account` button   | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                   |
+| `/student lookup`         | Owner and Moderator | Displays stored student full name, computed nickname, challenge flags, and team name publicly in the channel                        |
+| `/student register`       | Owner and Moderator | Manually registers or overrides a student record and Discord roles for support resolution publicly in the channel                   |
+| `/student reset`          | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles publicly in the channel                                           |
+| `/challenge advance`      | Owner               | Bulk promotes candidates between stages with optional `exclude` or `only` user filters publicly in the channel                      |
+| `/challenge revoke`       | Owner               | Bulk removes a stage role from selected users via inline mentions, IDs, or multi-user select menu publicly in the channel           |
+| `/challenge verify`       | Owner               | Enables or disables new `/verify` registrations dynamically publicly in the channel                                                 |
+| `/challenge verify-panel` | Owner               | Posts or updates the persistent verification button embed in any selected text channel publicly in the channel                      |
 
 ---
 
