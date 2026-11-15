@@ -36,7 +36,7 @@ Single-letter variable names and informal abbreviations such as `chall`, `btc`, 
 
 | Prefix                | Contract and Return Type                                     | Examples                                                               |
 | --------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `is*`, `has*`, `can*` | Side-effect-free predicate returning `boolean`               | `isTeamRoleName`, `isModeratorOrOwner`, `isVerificationEnabled`        |
+| `is*`, `has*`, `can*` | Side-effect-free predicate returning `boolean`               | `isOwnerOrHasOwnerRole`, `isModeratorOrOwner`, `isVerificationEnabled` |
 | `find*`               | Single-record lookup returning an entity or `null`           | `findByStudentId`, `findByDiscordId`                                   |
 | `list*`               | Multi-record query returning an array                        | `listByChallengeStage`                                                 |
 | `build*`              | Pure construction returning a formatted value object         | `buildValidatedNickname`, `buildSuccessEmbed`                          |
@@ -51,7 +51,6 @@ Single-letter variable names and informal abbreviations such as `chall`, `btc`, 
 | Discord Resource                    | Format Rule                                    | Language                      | Examples                                                          |
 | ----------------------------------- | ---------------------------------------------- | ----------------------------- | ----------------------------------------------------------------- |
 | System, Staff, Bot, and Stage Roles | Configurable via Snowflake ID in `config.yaml` | English (`en-US`)             | `owner`, `moderator`, `challenge-1`, `challenge-2`, `challenge-3` |
-| Team Roles                          | Prefix configurable via `teamRolePrefix`       | English (`en-US`)             | `team-01`, `team-02`                                              |
-| Categories                          | `UPPERCASE`                                    | English (`en-US`), full words | `INFORMATION`, `CHALLENGE 1`, `TEAM 01`, `STAFF`                  |
-| Channels                            | Unicode 6.0 emoji plus `・` plus `kebab-case`  | English (`en-US`), full words | `✅・verification`, `🎫・support-ticket`, `💬・team-discussion`   |
+| Categories                          | `UPPERCASE`                                    | English (`en-US`), full words | `INFORMATION`, `CHALLENGE 1`, `STAFF`                             |
+| Channels                            | Unicode 6.0 emoji plus `・` plus `kebab-case`  | English (`en-US`), full words | `✅・verification`, `🎫・support-ticket`, `💬・staff-discussion`  |
 | Slash Command Options               | Strict `kebab-case`                            | English (`en-US`), full words | `full-name`, `student-id`, `channel`                              |

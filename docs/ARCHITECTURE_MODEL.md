@@ -63,7 +63,6 @@ Operational logging uses `pino` configured via `logging` in `config.yaml`: prett
 | `is_challenge_1` | `INTEGER`   | `NOT NULL DEFAULT 1` | Tracks whether the candidate holds the Challenge 1 role     |
 | `is_challenge_2` | `INTEGER`   | `NOT NULL DEFAULT 0` | Tracks whether the candidate holds the Challenge 2 role     |
 | `is_challenge_3` | `INTEGER`   | `NOT NULL DEFAULT 0` | Tracks whether the candidate holds the Challenge 3 role     |
-| `team_name`      | `TEXT`      | `NULL`               | Assigned Challenge 3 team role slug such as `team-01`       |
 
 ### Table `system_settings`
 
