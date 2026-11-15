@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Zod schema validating a required Discord Snowflake ID string.
  */
 const snowflakeSchema = z
-  .string({ required_error: 'Required ID is missing.' })
+  .string({ error: 'Required ID is missing.' })
   .trim()
   .min(1, 'Required ID is empty; fill in this field.')
   .regex(/^\d{17,20}$/, 'Must be a valid Discord Snowflake ID (17 to 20 digits).');
@@ -51,7 +51,7 @@ export const appConfigSchema = z.object({
  */
 export const environmentSchema = z.object({
   DISCORD_APPLICATION_TOKEN: z
-    .string({ required_error: 'DISCORD_APPLICATION_TOKEN is missing.' })
+    .string({ error: 'DISCORD_APPLICATION_TOKEN is missing.' })
     .trim()
     .min(10, 'DISCORD_APPLICATION_TOKEN is empty or invalid.'),
   DISCORD_APPLICATION_ID: snowflakeSchema,
