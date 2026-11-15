@@ -17,6 +17,15 @@ export const appConfigSchema = z.object({
     clubCohortPrefix: z.string().trim().min(1).max(8),
     maxNicknameLength: z.number().int().min(16).max(32),
     allowedCohorts: z.array(z.string().regex(/^\d{2}$/)).min(1),
+    allowedStudentIdPrefixes: z
+      .array(
+        z
+          .string()
+          .trim()
+          .toUpperCase()
+          .regex(/^[A-Z]{2}$/),
+      )
+      .min(1),
     studentIdRegex: z.string().min(1),
     fullNameRegex: z.string().min(1),
     nicknameTemplate: z.string().includes('{prefix}').includes('{name}').includes('{studentId}'),
@@ -33,7 +42,7 @@ export const appConfigSchema = z.object({
       challenge2: snowflakeSchema,
       challenge3: snowflakeSchema,
     }),
-    teamRolePrefix: z.string().trim().min(1),
+    teamRolePrefix: z.string().trim().min(1).default('team-'),
   }),
   database: z.object({
     directory: z.string().trim().min(1),
@@ -50,6 +59,7 @@ export const appConfigSchema = z.object({
     verificationPanelButtonLabel: z.string().min(1),
     verificationClosedMessage: z.string().min(1),
     verificationSuccessTitle: z.string().min(1),
+    verificationAlreadyVerifiedTitle: z.string().min(1),
     verificationRestoredTitle: z.string().min(1),
     verificationErrorTitle: z.string().min(1),
   }),
