@@ -160,6 +160,15 @@ function validateStudentId(rawStudentId: string, botConfig: BotConfig): StudentI
     };
   }
 
+  const prefix = normalizedId.slice(0, 2);
+  if (!botConfig.allowedStudentIdPrefixes.includes(prefix)) {
+    const allowedPrefixLabels = botConfig.allowedStudentIdPrefixes.join(', ');
+    return {
+      valid: false,
+      error: `Student ID prefix \`${prefix}\` is not recognized for FPTU HCMC. Allowed prefixes: ${allowedPrefixLabels}.`,
+    };
+  }
+
   const cohort = match[1];
   if (!cohort || !botConfig.allowedCohorts.includes(cohort)) {
     const allowedLabels = botConfig.allowedCohorts.map((code) => `K${code}`).join(', ');
