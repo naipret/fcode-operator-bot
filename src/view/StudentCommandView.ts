@@ -83,6 +83,23 @@ export class StudentCommandView {
           .addUserOption((option) =>
             option.setName('user').setDescription('Discord user to reset.').setRequired(false),
           ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName('sync')
+          .setDescription('Synchronize SQLite student records (nickname and roles) to Discord.')
+          .addStringOption((option) =>
+            option
+              .setName('student-id')
+              .setDescription('Optional Student ID to sync (omit both options to sync all).')
+              .setRequired(false),
+          )
+          .addUserOption((option) =>
+            option
+              .setName('user')
+              .setDescription('Optional Discord user to sync (omit both options to sync all).')
+              .setRequired(false),
+          ),
       ) as SlashCommandBuilder;
   }
 
@@ -214,6 +231,34 @@ export class StudentCommandView {
           callerId: interaction.user.id,
           studentId: studentId ?? undefined,
           targetUserId: user?.id ?? undefined,
+        });
+      }
+      await interaction.editReply({
+        embeds: [
+          outcome.success
+            ? EmbedFactory.buildSuccessEmbed(outcome.title, outcome.description)
+            : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
+        ],
+      });
+      return;
+    }
+
+    if (subcommand === 'sync') {
+      const studentId = interaction.options.getString('student-id');
+      const user = interaction.options.getUser('user');
+      const outcome = await this.studentController.syncStudentsToDiscord(
+        interaction.guild,
+        studentId,
+        user?.id ?? null,
+      );
+      if (outcome.success) {
+        Logger.info('StudentCommandView', 'Synchronized database records to Discord', {
+          callerId: interaction.user.id,
+          studentId: studentId ?? undefined,
+          targetUserId: user?.id ?? undefined,
+          updatedCount: outcome.updatedCount,
+          skippedCount: outcome.skippedCount,
+          failedCount: outcome.failedMembers.length,
         });
       }
       await interaction.editReply({

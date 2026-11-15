@@ -257,7 +257,7 @@ export class VerificationController {
       });
       return {
         status: 'ALREADY_ACTIVE',
-        title: this.appConfig.messages.verificationRestoredTitle,
+        title: this.appConfig.messages.verificationAlreadyVerifiedTitle,
         description: `Your account is already verified and active.\n\nFull Name: \`${student.fullName}\`\nNickname: \`${expectedNickname}\`\nStudent ID: \`${student.studentId}\``,
         student,
         appliedNickname: expectedNickname,

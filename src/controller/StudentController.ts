@@ -4,6 +4,7 @@ import type { Student } from '../model/Student.js';
 import type { StudentRepository } from '../repository/StudentRepository.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { InputValidator } from '../util/InputValidator.js';
+import { Logger } from '../util/Logger.js';
 
 /**
  * Result returned by manual student lookup, register, and reset commands.
@@ -13,6 +14,18 @@ export interface StudentActionOutcome {
   title: string;
   description: string;
   student?: Student;
+}
+
+/**
+ * Result returned by SQLite-to-Discord student synchronization runs.
+ */
+export interface StudentSyncOutcome {
+  success: boolean;
+  title: string;
+  description: string;
+  updatedCount: number;
+  skippedCount: number;
+  failedMembers: string[];
 }
 
 /**
@@ -225,6 +238,121 @@ export class StudentController {
       success: true,
       title: 'Student Reset Complete',
       description: `Removed database record \`${existingStudent.studentId}\` (<@${existingStudent.discordId}>). The user may now re-verify from scratch.${discordCleanupNote}`,
+    };
+  }
+
+  /**
+   * Synchronizes verified SQLite student records (nickname and stage roles) to Discord.
+   *
+   * @param guild the target Discord guild
+   * @param rawStudentId optional single student ID to sync
+   * @param discordId optional single Discord user ID to sync
+   * @returns a StudentSyncOutcome summarizing updated, skipped, and failed members
+   */
+  public async syncStudentsToDiscord(
+    guild: Guild,
+    rawStudentId?: string | null,
+    discordId?: string | null,
+  ): Promise<StudentSyncOutcome> {
+    let targets: Student[];
+    if (rawStudentId || discordId) {
+      const matched = rawStudentId
+        ? this.studentRepository.findByStudentId(rawStudentId.trim().toUpperCase())
+        : discordId
+          ? this.studentRepository.findByDiscordId(discordId)
+          : null;
+      if (!matched || !matched.isVerified) {
+        return {
+          success: false,
+          title: 'Student Not Found',
+          description:
+            'No verified student record matched the provided Student ID or Discord user.',
+          updatedCount: 0,
+          skippedCount: 0,
+          failedMembers: [],
+        };
+      }
+      targets = [matched];
+    } else {
+      targets = this.studentRepository.listAllVerifiedStudents();
+    }
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const failedMembers: string[] = [];
+
+    for (const student of targets) {
+      const member =
+        guild.members.cache.get(student.discordId) ??
+        (await guild.members.fetch(student.discordId).catch(() => null));
+      if (!member) {
+        failedMembers.push(`${student.studentId} (not in server)`);
+        continue;
+      }
+
+      const expectedNickname = InputValidator.formatNickname(
+        student.fullName,
+        student.studentId,
+        this.appConfig.bot,
+      );
+      const desiredRoleIds = this.buildTargetRoleIds(member, student);
+      const currentRoleIds = new Set(
+        member.roles.cache.filter((role) => role.id !== guild.id).map((role) => role.id),
+      );
+      const rolesMatch =
+        desiredRoleIds.length === currentRoleIds.size &&
+        desiredRoleIds.every((roleId) => currentRoleIds.has(roleId));
+      const nicknameMatches = member.nickname === expectedNickname || member.id === guild.ownerId;
+
+      if (rolesMatch && nicknameMatches) {
+        skippedCount += 1;
+        continue;
+      }
+
+      try {
+        await member.edit({
+          ...(member.id === guild.ownerId ? {} : { nick: expectedNickname }),
+          roles: desiredRoleIds,
+        });
+        updatedCount += 1;
+      } catch (error) {
+        if (
+          error instanceof DiscordAPIError &&
+          error.code === StudentController.DISCORD_MISSING_PERMISSIONS_CODE &&
+          !rolesMatch
+        ) {
+          try {
+            await member.edit({ roles: desiredRoleIds });
+            updatedCount += 1;
+            continue;
+          } catch (fallbackError) {
+            Logger.warn(
+              'StudentController',
+              `Fallback role sync failed for ${student.studentId}: ${String(fallbackError)}`,
+            );
+          }
+        } else {
+          Logger.warn(
+            'StudentController',
+            `Failed syncing ${student.studentId} to Discord: ${String(error)}`,
+          );
+        }
+        failedMembers.push(student.studentId);
+      }
+    }
+
+    const failedSummary =
+      failedMembers.length > 0
+        ? `\nFailed (${failedMembers.length}): \`${failedMembers.join(', ')}\``
+        : '';
+
+    return {
+      success: true,
+      title: 'Database Sync Complete',
+      description: `Reconciled \`${targets.length}\` verified student(s) from SQLite to Discord.\n\nUpdated: \`${updatedCount}\`\nAlready In Sync: \`${skippedCount}\`${failedSummary}`,
+      updatedCount,
+      skippedCount,
+      failedMembers,
     };
   }
 

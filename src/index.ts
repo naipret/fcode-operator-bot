@@ -182,6 +182,13 @@ async function bootstrap(): Promise<void> {
 
       Logger.info('Bootstrap', `Cached ${guild.members.cache.size} members for ${guild.name}.`);
 
+      const syncResult = await studentController.syncStudentsToDiscord(guild);
+      Logger.info('Bootstrap', 'Reconciled SQLite student records with Discord', {
+        updatedCount: syncResult.updatedCount,
+        skippedCount: syncResult.skippedCount,
+        failedCount: syncResult.failedMembers.length,
+      });
+
       await registerGuildCommands(
         environment.DISCORD_APPLICATION_TOKEN,
         environment.DISCORD_APPLICATION_ID,
