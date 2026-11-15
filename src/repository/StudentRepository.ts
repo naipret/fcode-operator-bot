@@ -12,7 +12,6 @@ interface StudentRow {
   is_challenge_1: number;
   is_challenge_2: number;
   is_challenge_3: number;
-  team_name: string | null;
 }
 
 /**
@@ -123,17 +122,15 @@ export class StudentRepository {
           is_verified,
           is_challenge_1,
           is_challenge_2,
-          is_challenge_3,
-          team_name
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          is_challenge_3
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(student_id) DO UPDATE SET
           full_name = excluded.full_name,
           discord_id = excluded.discord_id,
           is_verified = excluded.is_verified,
           is_challenge_1 = excluded.is_challenge_1,
           is_challenge_2 = excluded.is_challenge_2,
-          is_challenge_3 = excluded.is_challenge_3,
-          team_name = excluded.team_name
+          is_challenge_3 = excluded.is_challenge_3
       `,
       )
       .run(
@@ -144,7 +141,6 @@ export class StudentRepository {
         student.isChallenge1 ? 1 : 0,
         student.isChallenge2 ? 1 : 0,
         student.isChallenge3 ? 1 : 0,
-        student.teamName,
       );
   }
 
@@ -190,7 +186,20 @@ export class StudentRepository {
   }
 
   /**
-   * Updates the challenge flags and team assignment for an existing student.
+   * Lists all verified students stored in SQLite for reconciliation with Discord.
+   *
+   * @returns an array of all verified Student entities
+   */
+  public listAllVerifiedStudents(): Student[] {
+    const connection = this.databaseClient.getConnection();
+    const rows = connection
+      .prepare('SELECT * FROM students WHERE is_verified = 1')
+      .all() as unknown as StudentRow[];
+    return rows.map((row) => this.mapRowToStudent(row));
+  }
+
+  /**
+   * Updates the challenge flags for an existing student.
    *
    * @param discordId the target student's Discord user identifier
    * @param state the synchronized role state flags
@@ -201,7 +210,6 @@ export class StudentRepository {
       isChallenge1: boolean;
       isChallenge2: boolean;
       isChallenge3: boolean;
-      teamName: string | null;
     },
   ): void {
     const connection = this.databaseClient.getConnection();
@@ -211,8 +219,7 @@ export class StudentRepository {
         UPDATE students
         SET is_challenge_1 = ?,
             is_challenge_2 = ?,
-            is_challenge_3 = ?,
-            team_name = ?
+            is_challenge_3 = ?
         WHERE discord_id = ?
       `,
       )
@@ -220,7 +227,6 @@ export class StudentRepository {
         state.isChallenge1 ? 1 : 0,
         state.isChallenge2 ? 1 : 0,
         state.isChallenge3 ? 1 : 0,
-        state.teamName,
         discordId,
       );
   }
@@ -284,7 +290,6 @@ export class StudentRepository {
       isChallenge1: row.is_challenge_1 === 1,
       isChallenge2: row.is_challenge_2 === 1,
       isChallenge3: row.is_challenge_3 === 1,
-      teamName: row.team_name,
     };
   }
 }

@@ -55,16 +55,6 @@ export class GuildResourceResolver {
   }
 
   /**
-   * Checks whether a role name matches the configured Challenge 3 team role prefix.
-   *
-   * @param roleName the Discord role name to inspect
-   * @returns true if roleName starts with teamRolePrefix
-   */
-  public isTeamRoleName(roleName: string): boolean {
-    return roleName.startsWith(this.appConfig.permissions.teamRolePrefix);
-  }
-
-  /**
    * Determines whether a guild member is the Server Owner or holds the configured owner role ID.
    *
    * @param guild the target Discord guild

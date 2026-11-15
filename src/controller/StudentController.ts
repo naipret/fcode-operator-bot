@@ -88,7 +88,6 @@ export class StudentController {
         `Computed Nickname: \`${nickname}\``,
         `Verified: \`${student.isVerified ? 'Yes' : 'No'}\``,
         `Active Stages: ${stages.length > 0 ? stages : 'None'}`,
-        `Team Name: \`${student.teamName ?? 'None'}\``,
       ].join('\n'),
       student,
     };
@@ -142,7 +141,6 @@ export class StudentController {
       isChallenge1: existingByDiscord ? existingByDiscord.isChallenge1 : true,
       isChallenge2: existingByDiscord ? existingByDiscord.isChallenge2 : false,
       isChallenge3: existingByDiscord ? existingByDiscord.isChallenge3 : false,
-      teamName: existingByDiscord ? existingByDiscord.teamName : null,
     };
 
     const roleIds = this.buildTargetRoleIds(member, student);
@@ -231,7 +229,7 @@ export class StudentController {
   }
 
   /**
-   * Returns role IDs on a member excluding bot-managed stage and team roles.
+   * Returns role IDs on a member excluding bot-managed stage roles.
    *
    * @param member the target guild member
    * @returns array of preserved Discord role Snowflake IDs
@@ -245,12 +243,7 @@ export class StudentController {
     ]);
 
     return member.roles.cache
-      .filter(
-        (role) =>
-          role.id !== member.guild.id &&
-          !managedStageIds.has(role.id) &&
-          !this.resourceResolver.isTeamRoleName(role.name),
-      )
+      .filter((role) => role.id !== member.guild.id && !managedStageIds.has(role.id))
       .map((role) => role.id);
   }
 
@@ -273,12 +266,6 @@ export class StudentController {
     }
     if (student.isChallenge3 && member.guild.roles.cache.has(stageRoleIds.challenge3)) {
       roleIds.add(stageRoleIds.challenge3);
-    }
-    if (student.teamName) {
-      const teamRole = member.guild.roles.cache.find((role) => role.name === student.teamName);
-      if (teamRole) {
-        roleIds.add(teamRole.id);
-      }
     }
 
     return Array.from(roleIds);

@@ -14,7 +14,6 @@ export interface Student {
   isChallenge1: boolean;
   isChallenge2: boolean;
   isChallenge3: boolean;
-  teamName: string | null;
 }
 
 /**

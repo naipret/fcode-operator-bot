@@ -1,4 +1,4 @@
-import { DiscordAPIError, type Guild, type GuildMember } from 'discord.js';
+import { DiscordAPIError, type GuildMember } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
 import type { Student, VerificationOutcome } from '../model/Student.js';
 import type { StudentRepository } from '../repository/StudentRepository.js';
@@ -157,7 +157,6 @@ export class VerificationController {
         isChallenge1: true,
         isChallenge2: false,
         isChallenge3: false,
-        teamName: null,
       };
 
       const targetRoleIds = this.computeDesiredRoleIds(member, studentRecord);
@@ -205,15 +204,10 @@ export class VerificationController {
     const isChallenge2 = member.roles.cache.has(stageRoleIds.challenge2);
     const isChallenge3 = member.roles.cache.has(stageRoleIds.challenge3);
 
-    const teamName =
-      member.roles.cache.find((role) => this.resourceResolver.isTeamRoleName(role.name))?.name ??
-      null;
-
     const hasChanged =
       existingStudent.isChallenge1 !== isChallenge1 ||
       existingStudent.isChallenge2 !== isChallenge2 ||
-      existingStudent.isChallenge3 !== isChallenge3 ||
-      existingStudent.teamName !== teamName;
+      existingStudent.isChallenge3 !== isChallenge3;
 
     if (!hasChanged) {
       return;
@@ -223,7 +217,6 @@ export class VerificationController {
       isChallenge1,
       isChallenge2,
       isChallenge3,
-      teamName,
     });
     Logger.info('VerificationController', 'Synchronized member role update to database', {
       discordId: member.id,
@@ -231,7 +224,6 @@ export class VerificationController {
       isChallenge1,
       isChallenge2,
       isChallenge3,
-      teamName,
     });
   }
 
@@ -305,12 +297,7 @@ export class VerificationController {
   private computeDesiredRoleIds(member: GuildMember, student: Student): string[] {
     const managedIds = this.getManagedStageRoleIdsSet();
     const preservedRoleIds = member.roles.cache
-      .filter(
-        (role) =>
-          role.id !== member.guild.id &&
-          !managedIds.has(role.id) &&
-          !this.resourceResolver.isTeamRoleName(role.name),
-      )
+      .filter((role) => role.id !== member.guild.id && !managedIds.has(role.id))
       .map((role) => role.id);
 
     const targetIds = new Set<string>(preservedRoleIds);
@@ -324,12 +311,6 @@ export class VerificationController {
     }
     if (student.isChallenge3 && member.guild.roles.cache.has(stageRoleIds.challenge3)) {
       targetIds.add(stageRoleIds.challenge3);
-    }
-    if (student.teamName) {
-      const teamRole = this.findRoleByExactName(member.guild, student.teamName);
-      if (teamRole) {
-        targetIds.add(teamRole.id);
-      }
     }
 
     return Array.from(targetIds);
@@ -347,17 +328,6 @@ export class VerificationController {
       stageRoleIds.challenge2,
       stageRoleIds.challenge3,
     ]);
-  }
-
-  /**
-   * Finds a Discord role by exact name in the guild cache for dynamic team restoration.
-   *
-   * @param guild the target Discord guild
-   * @param roleName the exact role name to locate
-   * @returns the matching Role or null when absent
-   */
-  private findRoleByExactName(guild: Guild, roleName: string) {
-    return guild.roles.cache.find((role) => role.name === roleName) ?? null;
   }
 
   /**

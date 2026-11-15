@@ -42,7 +42,6 @@ export const appConfigSchema = z.object({
       challenge2: snowflakeSchema,
       challenge3: snowflakeSchema,
     }),
-    teamRolePrefix: z.string().trim().min(1).default('team-'),
   }),
   database: z.object({
     directory: z.string().trim().min(1),

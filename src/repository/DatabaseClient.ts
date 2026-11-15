@@ -87,8 +87,7 @@ export class DatabaseClient {
         is_verified INTEGER NOT NULL DEFAULT 1,
         is_challenge_1 INTEGER NOT NULL DEFAULT 1,
         is_challenge_2 INTEGER NOT NULL DEFAULT 0,
-        is_challenge_3 INTEGER NOT NULL DEFAULT 0,
-        team_name TEXT NULL
+        is_challenge_3 INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE INDEX IF NOT EXISTS idx_students_discord_id ON students(discord_id);
@@ -100,5 +99,12 @@ export class DatabaseClient {
         setting_value TEXT NOT NULL
       );
     `);
+
+    const columns = this.database.prepare('PRAGMA table_info(students)').all() as Array<{
+      name: string;
+    }>;
+    if (columns.some((column) => column.name === 'team_name')) {
+      this.database.exec('ALTER TABLE students DROP COLUMN team_name;');
+    }
   }
 }
