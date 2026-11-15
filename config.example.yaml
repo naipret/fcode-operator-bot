@@ -41,9 +41,9 @@ logging:
   directory: './logs'
 
 messages:
-  verificationPanelTitle: 'F-Code Recruitment Verification'
-  verificationPanelDescription: "Welcome to the F-Code Club recruitment server.\n\nClick the button below to verify your student identity, receive your standardized nickname (`{prefix}_FullName_StudentID`), and unlock Challenge 1."
-  verificationPanelButtonLabel: 'Verify Account'
+  verificationPanelTitle: 'Verify'
+  verificationPanelDescription: 'Click the button below to verify your student identity.'
+  verificationPanelButtonLabel: '✅ Verify account'
   verificationClosedMessage: 'Verification is currently closed by the server administrator.'
   verificationSuccessTitle: 'Verification Complete'
   verificationAlreadyVerifiedTitle: 'Already Verified'
