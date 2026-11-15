@@ -24,13 +24,6 @@ fcode-operator-bot/
 ├── .github/
 ├── .husky/
 ├── docs/
-│   ├── ARCHITECTURE_MODEL.md
-│   ├── CLEAN_CODE.md
-│   ├── DESIGN_PATTERNS.md
-│   ├── DESIGN_PRINCIPLES.md
-│   ├── NAMING_CONVENTIONS.md
-│   ├── SERVER_PERMISSIONS.md
-│   └── WRITING_STYLE.md
 ├── src/
 │   ├── index.ts
 │   ├── client.ts
