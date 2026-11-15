@@ -100,8 +100,12 @@ async function dispatchInteraction(
           .editReply({ embeds: [errorEmbed], components: [] })
           .catch(() => undefined);
       } else {
+        const isEphemeralFallback = !interaction.isChatInputCommand();
         await interaction
-          .reply({ flags: MessageFlags.Ephemeral, embeds: [errorEmbed] })
+          .reply({
+            ...(isEphemeralFallback ? { flags: MessageFlags.Ephemeral } : {}),
+            embeds: [errorEmbed],
+          })
           .catch(() => undefined);
       }
     }
@@ -114,8 +118,10 @@ async function dispatchInteraction(
 async function bootstrap(): Promise<void> {
   const environment = ConfigLoader.loadEnvironment();
   const appConfig = ConfigLoader.loadAppConfig(environment.CONFIG_PATH);
+  Logger.configure(appConfig.logging);
 
   const databasePath = ConfigLoader.resolveDatabasePath(appConfig);
+  Logger.info('Bootstrap', `Using SQLite database at ${databasePath}`);
   const databaseClient = new DatabaseClient(databasePath);
   const studentRepository = new StudentRepository(databaseClient);
   studentRepository.seedVerificationGateDefault(appConfig.verification.enabledByDefault);

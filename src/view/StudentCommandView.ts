@@ -1,11 +1,11 @@
 import {
   type ChatInputCommandInteraction,
-  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from 'discord.js';
 import type { StudentController } from '../controller/StudentController.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
+import { Logger } from '../util/Logger.js';
 import { EmbedFactory } from './EmbedFactory.js';
 
 /**
@@ -94,7 +94,6 @@ export class StudentCommandView {
   public async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
     if (!interaction.guild) {
       await interaction.reply({
-        flags: MessageFlags.Ephemeral,
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Server Required',
@@ -108,7 +107,6 @@ export class StudentCommandView {
     const callerMember = await interaction.guild.members.fetch(interaction.user.id);
     if (!this.resourceResolver.isModeratorOrOwner(interaction.guild, callerMember)) {
       await interaction.reply({
-        flags: MessageFlags.Ephemeral,
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Permission Denied',
@@ -120,7 +118,7 @@ export class StudentCommandView {
     }
 
     const subcommand = interaction.options.getSubcommand();
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     if (subcommand === 'lookup') {
       const studentId = interaction.options.getString('student-id');
@@ -171,6 +169,13 @@ export class StudentCommandView {
         rawFullName,
         rawStudentId,
       );
+      if (outcome.success) {
+        Logger.info('StudentCommandView', 'Manually registered student', {
+          callerId: interaction.user.id,
+          targetId: targetMember.id,
+          studentId: rawStudentId.toUpperCase(),
+        });
+      }
       await interaction.editReply({
         embeds: [
           outcome.success
@@ -204,6 +209,13 @@ export class StudentCommandView {
         studentId,
         targetMember,
       );
+      if (outcome.success) {
+        Logger.info('StudentCommandView', 'Reset student record', {
+          callerId: interaction.user.id,
+          studentId: studentId ?? undefined,
+          targetUserId: user?.id ?? undefined,
+        });
+      }
       await interaction.editReply({
         embeds: [
           outcome.success

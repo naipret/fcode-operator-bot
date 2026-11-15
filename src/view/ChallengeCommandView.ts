@@ -5,7 +5,6 @@ import {
   ButtonStyle,
   ChannelType,
   type ChatInputCommandInteraction,
-  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
   UserSelectMenuBuilder,
@@ -16,6 +15,7 @@ import type { ChallengeController } from '../controller/ChallengeController.js';
 import type { ChallengeStageKey } from '../model/Student.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { InputValidator } from '../util/InputValidator.js';
+import { Logger } from '../util/Logger.js';
 import { EmbedFactory } from './EmbedFactory.js';
 import { VERIFY_PANEL_BUTTON_ID } from './VerifyCommandView.js';
 
@@ -201,7 +201,6 @@ export class ChallengeCommandView {
   public async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
     if (!interaction.guild) {
       await interaction.reply({
-        flags: MessageFlags.Ephemeral,
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Server Required',
@@ -215,7 +214,6 @@ export class ChallengeCommandView {
     const callerMember = await interaction.guild.members.fetch(interaction.user.id);
     if (!this.resourceResolver.isOwnerOrHasOwnerRole(interaction.guild, callerMember)) {
       await interaction.reply({
-        flags: MessageFlags.Ephemeral,
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Owner Authorization Required',
@@ -227,11 +225,15 @@ export class ChallengeCommandView {
     }
 
     const subcommand = interaction.options.getSubcommand();
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     if (subcommand === 'verify') {
       const enabled = interaction.options.getBoolean('enabled', true);
       this.challengeController.setVerificationEnabled(enabled);
+      Logger.info('ChallengeCommandView', 'Updated verification gate state', {
+        callerId: interaction.user.id,
+        enabled,
+      });
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildSuccessEmbed(
@@ -293,6 +295,13 @@ export class ChallengeCommandView {
       candidates,
       pending.toStage,
     );
+    Logger.info('ChallengeCommandView', 'Completed stage advancement via confirmation button', {
+      callerId: interaction.user.id,
+      fromStage: pending.fromStage,
+      toStage: pending.toStage,
+      updatedCount: result.updatedCount,
+      failedCount: result.failedMembers.length,
+    });
 
     await interaction.editReply({
       embeds: [
@@ -348,6 +357,14 @@ export class ChallengeCommandView {
         candidates,
         pending.toStage,
       );
+      Logger.info('ChallengeCommandView', 'Completed stage advancement with exclusions', {
+        callerId: interaction.user.id,
+        fromStage: pending.fromStage,
+        toStage: pending.toStage,
+        excludedCount: selectedDiscordIds.length,
+        updatedCount: result.updatedCount,
+        failedCount: result.failedMembers.length,
+      });
 
       await interaction.editReply({
         embeds: [
@@ -387,6 +404,12 @@ export class ChallengeCommandView {
         selectedDiscordIds,
         [],
       );
+      Logger.info('ChallengeCommandView', 'Completed stage revocation via user select menu', {
+        callerId: interaction.user.id,
+        stage: pending.stage,
+        updatedCount: result.updatedCount,
+        failedCount: result.failedMembers.length,
+      });
 
       await interaction.editReply({
         embeds: [
@@ -451,6 +474,10 @@ export class ChallengeCommandView {
 
     if (existingPanel) {
       await existingPanel.edit({ embeds: [panelEmbed], components: [panelRow] });
+      Logger.info('ChallengeCommandView', 'Updated existing verification panel', {
+        callerId: interaction.user.id,
+        channelId: targetChannel.id,
+      });
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildSuccessEmbed(
@@ -463,6 +490,10 @@ export class ChallengeCommandView {
     }
 
     await targetChannel.send({ embeds: [panelEmbed], components: [panelRow] });
+    Logger.info('ChallengeCommandView', 'Posted verification panel', {
+      callerId: interaction.user.id,
+      channelId: targetChannel.id,
+    });
     await interaction.editReply({
       embeds: [
         EmbedFactory.buildSuccessEmbed(
@@ -524,6 +555,13 @@ export class ChallengeCommandView {
         candidates,
         targetStage,
       );
+      Logger.info('ChallengeCommandView', 'Completed filtered stage advancement', {
+        callerId: interaction.user.id,
+        fromStage,
+        toStage: targetStage,
+        updatedCount: result.updatedCount,
+        failedCount: result.failedMembers.length,
+      });
 
       await interaction.editReply({
         embeds: [
@@ -605,6 +643,12 @@ export class ChallengeCommandView {
         tokens.discordIds,
         tokens.studentIds,
       );
+      Logger.info('ChallengeCommandView', 'Completed inline stage revocation', {
+        callerId: interaction.user.id,
+        stage,
+        updatedCount: result.updatedCount,
+        failedCount: result.failedMembers.length,
+      });
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildBatchMutationEmbed(

@@ -56,7 +56,7 @@ export class VerificationController {
     }
 
     if (this.inFlightUsers.has(member.id)) {
-      return this.buildLockedOutcome();
+      return this.buildLockedOutcome(member.id);
     }
 
     this.inFlightUsers.add(member.id);
@@ -81,7 +81,7 @@ export class VerificationController {
     rawStudentId: string,
   ): Promise<VerificationOutcome> {
     if (this.inFlightUsers.has(member.id)) {
-      return this.buildLockedOutcome();
+      return this.buildLockedOutcome(member.id);
     }
 
     this.inFlightUsers.add(member.id);
@@ -92,6 +92,9 @@ export class VerificationController {
       }
 
       if (!this.studentRepository.isVerificationEnabled()) {
+        Logger.warn('VerificationController', 'Verification rejected because gate is closed', {
+          discordId: member.id,
+        });
         const supportMention = this.resourceResolver.getSupportChannelMention();
         return {
           status: 'GATE_CLOSED',
@@ -108,6 +111,11 @@ export class VerificationController {
       if (!nicknameResult.valid) {
         const supportMention = this.resourceResolver.getSupportChannelMention();
         if (nicknameResult.reason === 'NICKNAME_TOO_LONG') {
+          Logger.warn(
+            'VerificationController',
+            'Verification rejected because formatted nickname exceeded limit',
+            { discordId: member.id, studentId: rawStudentId },
+          );
           return {
             status: 'NICKNAME_TOO_LONG',
             title: this.appConfig.messages.verificationErrorTitle,
@@ -115,6 +123,10 @@ export class VerificationController {
           };
         }
 
+        Logger.warn('VerificationController', 'Verification rejected due to invalid input', {
+          discordId: member.id,
+          reason: nicknameResult.reason,
+        });
         return {
           status: 'INVALID_INPUT',
           title: this.appConfig.messages.verificationErrorTitle,
@@ -124,6 +136,11 @@ export class VerificationController {
 
       const existingByStudentId = this.studentRepository.findByStudentId(nicknameResult.studentId);
       if (existingByStudentId && existingByStudentId.discordId !== member.id) {
+        Logger.warn('VerificationController', 'Verification rejected due to duplicate student ID', {
+          discordId: member.id,
+          studentId: nicknameResult.studentId,
+          existingDiscordId: existingByStudentId.discordId,
+        });
         const supportMention = this.resourceResolver.getSupportChannelMention();
         return {
           status: 'CONFLICT',
@@ -151,6 +168,12 @@ export class VerificationController {
       );
 
       this.studentRepository.upsertStudent(studentRecord);
+      Logger.info('VerificationController', 'Registered new student', {
+        discordId: member.id,
+        studentId: studentRecord.studentId,
+        fullName: studentRecord.fullName,
+        nickname: nicknameResult.nickname,
+      });
 
       const stage1RoleId = this.resourceResolver.getStageRoleId('challenge-1');
       return {
@@ -202,6 +225,14 @@ export class VerificationController {
       isChallenge3,
       teamName,
     });
+    Logger.info('VerificationController', 'Synchronized member role update to database', {
+      discordId: member.id,
+      studentId: existingStudent.studentId,
+      isChallenge1,
+      isChallenge2,
+      isChallenge3,
+      teamName,
+    });
   }
 
   /**
@@ -228,6 +259,10 @@ export class VerificationController {
       member.nickname === expectedNickname || member.id === member.guild.ownerId;
 
     if (missingRoles.length === 0 && nicknameMatches) {
+      Logger.debug('VerificationController', 'Member already verified and active', {
+        discordId: member.id,
+        studentId: student.studentId,
+      });
       return {
         status: 'ALREADY_ACTIVE',
         title: this.appConfig.messages.verificationRestoredTitle,
@@ -242,6 +277,12 @@ export class VerificationController {
       expectedNickname,
       desiredRoleIds,
     );
+
+    Logger.info('VerificationController', 'Restored returning student roles and nickname', {
+      discordId: member.id,
+      studentId: student.studentId,
+      restoredRolesCount: missingRoles.length,
+    });
 
     const restoredStages = this.formatActiveStagesSummary(student);
     return {
@@ -371,9 +412,13 @@ export class VerificationController {
   /**
    * Builds a standardized outcome when a user triggers concurrent duplicate verification requests.
    *
+   * @param discordId the interacting user's Discord snowflake ID
    * @returns a LOCKED VerificationOutcome
    */
-  private buildLockedOutcome(): VerificationOutcome {
+  private buildLockedOutcome(discordId: string): VerificationOutcome {
+    Logger.warn('VerificationController', 'Concurrent verification request blocked by mutex', {
+      discordId,
+    });
     return {
       status: 'LOCKED',
       title: 'Verification In Progress',

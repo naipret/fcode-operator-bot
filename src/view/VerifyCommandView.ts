@@ -15,7 +15,6 @@ import type { VerificationController } from '../controller/VerificationControlle
 import type { VerificationOutcome } from '../model/Student.js';
 import type { StudentRepository } from '../repository/StudentRepository.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
-import { InputValidator } from '../util/InputValidator.js';
 import { EmbedFactory } from './EmbedFactory.js';
 
 /**
@@ -68,19 +67,20 @@ export class VerifyCommandView {
    * @returns a SlashCommandBuilder defining /verify and its optional inline fields
    */
   public getCommandDefinition(): SlashCommandBuilder {
+    const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
     return new SlashCommandBuilder()
       .setName('verify')
       .setDescription('Verify your student identity and unlock Challenge 1.')
       .addStringOption((option) =>
         option
           .setName('full-name')
-          .setDescription('Your full name (for example, Nguyen Van A).')
+          .setDescription('Your full name (for example, Nguyễn Văn A).')
           .setRequired(false),
       )
       .addStringOption((option) =>
         option
           .setName('student-id')
-          .setDescription('Your FPT University student ID (for example, SE220001).')
+          .setDescription(`Your FPT University student ID (for example, SE${latestCohort}0001).`)
           .setRequired(false),
       ) as SlashCommandBuilder;
   }
@@ -239,27 +239,23 @@ export class VerifyCommandView {
    * @returns a ModalBuilder instance
    */
   private buildVerificationModal(customId: string): ModalBuilder {
+    const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
     const fullNameInput = new TextInputBuilder()
       .setCustomId('full-name-input')
       .setLabel('Full Name')
-      .setPlaceholder('Example: Nguyen Van A')
+      .setPlaceholder('Example: Nguyễn Văn A')
       .setStyle(TextInputStyle.Short)
       .setMinLength(2)
       .setMaxLength(60)
       .setRequired(true);
 
-    const studentIdLabel = InputValidator.interpolateConfigText(
-      'Student ID (Cohorts {cohorts})',
-      this.appConfig.bot,
-    );
-
     const studentIdInput = new TextInputBuilder()
       .setCustomId('student-id-input')
-      .setLabel(studentIdLabel)
-      .setPlaceholder('Example: SE220001')
+      .setLabel('Student ID (8 characters)')
+      .setPlaceholder(`Example: SE${latestCohort}0001`)
       .setStyle(TextInputStyle.Short)
       .setMinLength(8)
-      .setMaxLength(12)
+      .setMaxLength(8)
       .setRequired(true);
 
     return new ModalBuilder()
