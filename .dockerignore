@@ -1,0 +1,11 @@
+node_modules
+dist
+data
+.agents
+.env
+.env.*
+config.yaml
+.git
+.github
+.husky
+*.log
