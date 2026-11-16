@@ -85,26 +85,19 @@ export class DatabaseClient {
         full_name TEXT NOT NULL,
         discord_id TEXT NOT NULL UNIQUE,
         is_verified INTEGER NOT NULL DEFAULT 1,
-        is_challenge_1 INTEGER NOT NULL DEFAULT 1,
-        is_challenge_2 INTEGER NOT NULL DEFAULT 0,
-        is_challenge_3 INTEGER NOT NULL DEFAULT 0
+        is_round_1 INTEGER NOT NULL DEFAULT 1,
+        is_round_2 INTEGER NOT NULL DEFAULT 0,
+        is_round_3 INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE INDEX IF NOT EXISTS idx_students_discord_id ON students(discord_id);
-      CREATE INDEX IF NOT EXISTS idx_students_challenges
-        ON students(is_challenge_1, is_challenge_2, is_challenge_3);
+      CREATE INDEX IF NOT EXISTS idx_students_rounds
+        ON students(is_round_1, is_round_2, is_round_3);
 
       CREATE TABLE IF NOT EXISTS system_settings (
         setting_key TEXT PRIMARY KEY,
         setting_value TEXT NOT NULL
       );
     `);
-
-    const columns = this.database.prepare('PRAGMA table_info(students)').all() as Array<{
-      name: string;
-    }>;
-    if (columns.some((column) => column.name === 'team_name')) {
-      this.database.exec('ALTER TABLE students DROP COLUMN team_name;');
-    }
   }
 }
