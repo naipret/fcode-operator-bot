@@ -30,4 +30,4 @@ Every verification entry point validates gate status, full name and student ID b
 
 ## 5. Observer Synchronization (`guildMemberUpdate`)
 
-The bot registers a lightweight event observer on `Events.GuildMemberUpdate` in `src/index.ts`. Whenever staff members add or remove configured stage roles manually on Discord, `VerificationController.syncMemberRolesToDatabase` reconciles `is_challenge_1`, `is_challenge_2`, and `is_challenge_3` back into the local SQLite database. Conversely, `StudentController.syncStudentsToDiscord` reconciles manual SQLite edits back to Discord on startup and via `/student sync`.
+The bot registers a lightweight event observer on `Events.GuildMemberUpdate` in `src/index.ts`. Whenever staff members add or remove configured round roles manually on Discord, `VerificationController.syncMemberRolesToDatabase` reconciles `is_round_1`, `is_round_2`, and `is_round_3` back into the local SQLite database. Conversely, `StudentController.syncStudentsToDiscord` reconciles manual SQLite edits back to Discord on startup and via `/student sync`.

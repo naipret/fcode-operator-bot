@@ -54,15 +54,15 @@ Operational logging uses `pino` configured via `logging` in `config.yaml`: prett
 
 ### Table `students`
 
-| Column           | SQLite Type | Constraints          | Description                                                 |
-| ---------------- | ----------- | -------------------- | ----------------------------------------------------------- |
-| `student_id`     | `TEXT`      | `PRIMARY KEY`        | Uppercase student identifier such as `SE220001`             |
-| `full_name`      | `TEXT`      | `NOT NULL`           | Normalized `Title Case` student name such as `Nguyễn Văn A` |
-| `discord_id`     | `TEXT`      | `NOT NULL UNIQUE`    | Discord user snowflake identifier                           |
-| `is_verified`    | `INTEGER`   | `NOT NULL DEFAULT 1` | Verification flag (`1` when active, `0` when inactive)      |
-| `is_challenge_1` | `INTEGER`   | `NOT NULL DEFAULT 1` | Tracks whether the candidate holds the Challenge 1 role     |
-| `is_challenge_2` | `INTEGER`   | `NOT NULL DEFAULT 0` | Tracks whether the candidate holds the Challenge 2 role     |
-| `is_challenge_3` | `INTEGER`   | `NOT NULL DEFAULT 0` | Tracks whether the candidate holds the Challenge 3 role     |
+| Column        | SQLite Type | Constraints          | Description                                                 |
+| ------------- | ----------- | -------------------- | ----------------------------------------------------------- |
+| `student_id`  | `TEXT`      | `PRIMARY KEY`        | Uppercase student identifier such as `SE220001`             |
+| `full_name`   | `TEXT`      | `NOT NULL`           | Normalized `Title Case` student name such as `Nguyễn Văn A` |
+| `discord_id`  | `TEXT`      | `NOT NULL UNIQUE`    | Discord user snowflake identifier                           |
+| `is_verified` | `INTEGER`   | `NOT NULL DEFAULT 1` | Verification flag (`1` when active, `0` when inactive)      |
+| `is_round_1`  | `INTEGER`   | `NOT NULL DEFAULT 1` | Tracks whether the candidate holds the Round 1 role         |
+| `is_round_2`  | `INTEGER`   | `NOT NULL DEFAULT 0` | Tracks whether the candidate holds the Round 2 role         |
+| `is_round_3`  | `INTEGER`   | `NOT NULL DEFAULT 0` | Tracks whether the candidate holds the Round 3 role         |
 
 ### Table `system_settings`
 

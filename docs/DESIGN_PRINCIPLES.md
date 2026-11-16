@@ -13,16 +13,16 @@ Each class and module owns one cohesive responsibility:
 1. `ConfigLoader` reads YAML files and validates environment schemas without holding Discord client references.
 2. `InputValidator` performs stateless Title Case and PascalCase normalization, cohort extraction, template interpolation, and length verification.
 3. `StudentRepository` handles SQLite reads and writes without knowing Discord API error codes.
-4. `VerificationController`, `StudentController`, and `ChallengeController` enforce domain logic without rendering Embed UI components.
+4. `VerificationController`, `StudentController`, and `RoundController` enforce domain logic without rendering Embed UI components.
 5. `EmbedFactory` and `*CommandView` classes construct Discord UI payloads without executing SQL queries.
 
 ### Open and Closed Principle
 
-Recruitment parameters, cohort ranges (`allowedCohorts`), cohort prefixes (`clubCohortPrefix`), support channel ID (`supportChannelId`), and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `stageRoleIds`) reside in `config.yaml`. Transitioning to a new cohort prefix or deploying on a new server template requires editing `config.yaml` rather than modifying controller source code.
+Recruitment parameters, cohort ranges (`allowedCohorts`), cohort prefixes (`clubCohortPrefix`), support channel ID (`supportChannelId`), and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `roundRoleIds`) reside in `config.yaml`. Transitioning to a new cohort prefix or deploying on a new server template requires editing `config.yaml` rather than modifying controller source code.
 
 ### Interface Segregation Principle
 
-Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController`, `StudentRepository`, and `GuildResourceResolver`, while `ChallengeCommandView` depends on `ChallengeController` and `GuildResourceResolver`.
+Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController`, `StudentRepository`, and `GuildResourceResolver`, while `RoundCommandView` depends on `RoundController` and `GuildResourceResolver`.
 
 ### Dependency Inversion Principle
 

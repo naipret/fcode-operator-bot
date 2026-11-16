@@ -70,18 +70,18 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 
 ## 4. Slash Commands Overview
 
-| Command                   | Access Tier         | Behavior                                                                                                                            |
-| ------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `/verify`                 | Everyone            | Verifies new candidates (strictly 8-character student ID) or restores returning verified accounts, replying publicly in the channel |
-| `Verify Account` button   | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                   |
-| `/student lookup`         | Owner and Moderator | Displays stored student full name, computed nickname, and challenge flags publicly in the channel                                   |
-| `/student register`       | Owner and Moderator | Manually registers or overrides a student record and Discord roles for support resolution publicly in the channel                   |
-| `/student reset`          | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles publicly in the channel                                           |
-| `/student sync`           | Owner and Moderator | Reconciles SQLite student records (nicknames and stage roles) to Discord publicly in the channel                                    |
-| `/challenge advance`      | Owner               | Bulk promotes candidates between stages with optional `exclude` or `only` user filters publicly in the channel                      |
-| `/challenge revoke`       | Owner               | Bulk removes a stage role from selected users via inline mentions, IDs, or multi-user select menu publicly in the channel           |
-| `/challenge verify`       | Owner               | Enables or disables new `/verify` registrations dynamically publicly in the channel                                                 |
-| `/challenge verify-panel` | Owner               | Posts or updates the persistent verification button embed in any selected text channel publicly in the channel                      |
+| Command                 | Access Tier         | Behavior                                                                                                                            |
+| ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `/verify`               | Everyone            | Verifies new candidates (strictly 8-character student ID) or restores returning verified accounts, replying publicly in the channel |
+| `Verify Account` button | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                   |
+| `/student lookup`       | Owner and Moderator | Displays stored student full name, computed nickname, and round flags publicly in the channel                                       |
+| `/student register`     | Owner and Moderator | Manually registers or overrides a student record and Discord roles for support resolution publicly in the channel                   |
+| `/student reset`        | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles publicly in the channel                                           |
+| `/student sync`         | Owner and Moderator | Reconciles SQLite student records (nicknames and round roles) to Discord publicly in the channel                                    |
+| `/round advance`        | Owner               | Bulk promotes candidates between rounds with optional `exclude` or `only` user filters publicly in the channel                      |
+| `/round revoke`         | Owner               | Bulk removes a round role from selected users via inline mentions, IDs, or multi-user select menu publicly in the channel           |
+| `/round verify`         | Owner               | Enables or disables new `/verify` registrations dynamically publicly in the channel                                                 |
+| `/round verify-panel`   | Owner               | Posts or updates the persistent verification button embed in any selected text channel publicly in the channel                      |
 
 ---
 
