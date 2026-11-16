@@ -26,10 +26,10 @@ verification:
 permissions:
   ownerRoleId: ''
   moderatorRoleId: ''
-  stageRoleIds:
-    challenge1: ''
-    challenge2: ''
-    challenge3: ''
+  roundRoleIds:
+    round1: ''
+    round2: ''
+    round3: ''
 
 database:
   directory: './data'
