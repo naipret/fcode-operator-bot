@@ -70,7 +70,7 @@ export class VerifyCommandView {
     const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
     return new SlashCommandBuilder()
       .setName('verify')
-      .setDescription('Verify your student identity and unlock Challenge 1.')
+      .setDescription('Verify your student identity and unlock Round 1.')
       .addStringOption((option) =>
         option
           .setName('full-name')

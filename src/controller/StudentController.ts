@@ -84,10 +84,10 @@ export class StudentController {
       student.studentId,
       this.appConfig.bot,
     );
-    const stages = [
-      student.isChallenge1 ? `<@&${this.resourceResolver.getStageRoleId('challenge-1')}>` : null,
-      student.isChallenge2 ? `<@&${this.resourceResolver.getStageRoleId('challenge-2')}>` : null,
-      student.isChallenge3 ? `<@&${this.resourceResolver.getStageRoleId('challenge-3')}>` : null,
+    const rounds = [
+      student.isRound1 ? `<@&${this.resourceResolver.getRoundRoleId('round-1')}>` : null,
+      student.isRound2 ? `<@&${this.resourceResolver.getRoundRoleId('round-2')}>` : null,
+      student.isRound3 ? `<@&${this.resourceResolver.getRoundRoleId('round-3')}>` : null,
     ]
       .filter((entry): entry is string => entry !== null)
       .join(', ');
@@ -100,7 +100,7 @@ export class StudentController {
         `Full Name: \`${student.fullName}\``,
         `Computed Nickname: \`${nickname}\``,
         `Verified: \`${student.isVerified ? 'Yes' : 'No'}\``,
-        `Active Stages: ${stages.length > 0 ? stages : 'None'}`,
+        `Active Rounds: ${rounds.length > 0 ? rounds : 'None'}`,
       ].join('\n'),
       student,
     };
@@ -151,9 +151,9 @@ export class StudentController {
       fullName: validation.formattedFullName,
       discordId: member.id,
       isVerified: true,
-      isChallenge1: existingByDiscord ? existingByDiscord.isChallenge1 : true,
-      isChallenge2: existingByDiscord ? existingByDiscord.isChallenge2 : false,
-      isChallenge3: existingByDiscord ? existingByDiscord.isChallenge3 : false,
+      isRound1: existingByDiscord ? existingByDiscord.isRound1 : true,
+      isRound2: existingByDiscord ? existingByDiscord.isRound2 : false,
+      isRound3: existingByDiscord ? existingByDiscord.isRound3 : false,
     };
 
     const roleIds = this.buildTargetRoleIds(member, student);
@@ -357,21 +357,21 @@ export class StudentController {
   }
 
   /**
-   * Returns role IDs on a member excluding bot-managed stage roles.
+   * Returns role IDs on a member excluding bot-managed round roles.
    *
    * @param member the target guild member
    * @returns array of preserved Discord role Snowflake IDs
    */
   private getPreservedRoleIds(member: GuildMember): string[] {
-    const { stageRoleIds } = this.appConfig.permissions;
-    const managedStageIds = new Set<string>([
-      stageRoleIds.challenge1,
-      stageRoleIds.challenge2,
-      stageRoleIds.challenge3,
+    const { roundRoleIds } = this.appConfig.permissions;
+    const managedRoundIds = new Set<string>([
+      roundRoleIds.round1,
+      roundRoleIds.round2,
+      roundRoleIds.round3,
     ]);
 
     return member.roles.cache
-      .filter((role) => role.id !== member.guild.id && !managedStageIds.has(role.id))
+      .filter((role) => role.id !== member.guild.id && !managedRoundIds.has(role.id))
       .map((role) => role.id);
   }
 
@@ -384,16 +384,16 @@ export class StudentController {
    */
   private buildTargetRoleIds(member: GuildMember, student: Student): string[] {
     const roleIds = new Set<string>(this.getPreservedRoleIds(member));
-    const { stageRoleIds } = this.appConfig.permissions;
+    const { roundRoleIds } = this.appConfig.permissions;
 
-    if (student.isChallenge1 && member.guild.roles.cache.has(stageRoleIds.challenge1)) {
-      roleIds.add(stageRoleIds.challenge1);
+    if (student.isRound1 && member.guild.roles.cache.has(roundRoleIds.round1)) {
+      roleIds.add(roundRoleIds.round1);
     }
-    if (student.isChallenge2 && member.guild.roles.cache.has(stageRoleIds.challenge2)) {
-      roleIds.add(stageRoleIds.challenge2);
+    if (student.isRound2 && member.guild.roles.cache.has(roundRoleIds.round2)) {
+      roleIds.add(roundRoleIds.round2);
     }
-    if (student.isChallenge3 && member.guild.roles.cache.has(stageRoleIds.challenge3)) {
-      roleIds.add(stageRoleIds.challenge3);
+    if (student.isRound3 && member.guild.roles.cache.has(roundRoleIds.round3)) {
+      roleIds.add(roundRoleIds.round3);
     }
 
     return Array.from(roleIds);

@@ -97,7 +97,7 @@ function buildBatchMutationEmbed(
 }
 
 /**
- * Constructs standardized Discord embeds for verification, student, and challenge views.
+ * Constructs standardized Discord embeds for verification, student, and round views.
  */
 export const EmbedFactory = {
   buildSuccessEmbed,

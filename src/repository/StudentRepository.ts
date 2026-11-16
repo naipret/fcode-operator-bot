@@ -1,4 +1,4 @@
-import type { ChallengeStageKey, Student } from '../model/Student.js';
+import type { RoundKey, Student } from '../model/Student.js';
 import type { DatabaseClient } from './DatabaseClient.js';
 
 /**
@@ -9,9 +9,9 @@ interface StudentRow {
   full_name: string;
   discord_id: string;
   is_verified: number;
-  is_challenge_1: number;
-  is_challenge_2: number;
-  is_challenge_3: number;
+  is_round_1: number;
+  is_round_2: number;
+  is_round_3: number;
 }
 
 /**
@@ -120,17 +120,17 @@ export class StudentRepository {
           full_name,
           discord_id,
           is_verified,
-          is_challenge_1,
-          is_challenge_2,
-          is_challenge_3
+          is_round_1,
+          is_round_2,
+          is_round_3
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(student_id) DO UPDATE SET
           full_name = excluded.full_name,
           discord_id = excluded.discord_id,
           is_verified = excluded.is_verified,
-          is_challenge_1 = excluded.is_challenge_1,
-          is_challenge_2 = excluded.is_challenge_2,
-          is_challenge_3 = excluded.is_challenge_3
+          is_round_1 = excluded.is_round_1,
+          is_round_2 = excluded.is_round_2,
+          is_round_3 = excluded.is_round_3
       `,
       )
       .run(
@@ -138,9 +138,9 @@ export class StudentRepository {
         student.fullName,
         student.discordId,
         student.isVerified ? 1 : 0,
-        student.isChallenge1 ? 1 : 0,
-        student.isChallenge2 ? 1 : 0,
-        student.isChallenge3 ? 1 : 0,
+        student.isRound1 ? 1 : 0,
+        student.isRound2 ? 1 : 0,
+        student.isRound3 ? 1 : 0,
       );
   }
 
@@ -171,13 +171,13 @@ export class StudentRepository {
   }
 
   /**
-   * Lists all students currently holding the specified challenge stage flag.
+   * Lists all students currently holding the specified round flag.
    *
-   * @param stage the challenge stage column to filter by
+   * @param round the round column to filter by
    * @returns an array of matching Student entities
    */
-  public listByChallengeStage(stage: ChallengeStageKey): Student[] {
-    const column = this.resolveStageColumn(stage);
+  public listByRound(round: RoundKey): Student[] {
+    const column = this.resolveRoundColumn(round);
     const connection = this.databaseClient.getConnection();
     const rows = connection
       .prepare(`SELECT * FROM students WHERE is_verified = 1 AND ${column} = 1`)
@@ -199,7 +199,7 @@ export class StudentRepository {
   }
 
   /**
-   * Updates the challenge flags for an existing student.
+   * Updates the round flags for an existing student.
    *
    * @param discordId the target student's Discord user identifier
    * @param state the synchronized role state flags
@@ -207,9 +207,9 @@ export class StudentRepository {
   public syncRoleStateByDiscordId(
     discordId: string,
     state: {
-      isChallenge1: boolean;
-      isChallenge2: boolean;
-      isChallenge3: boolean;
+      isRound1: boolean;
+      isRound2: boolean;
+      isRound3: boolean;
     },
   ): void {
     const connection = this.databaseClient.getConnection();
@@ -217,37 +217,28 @@ export class StudentRepository {
       .prepare(
         `
         UPDATE students
-        SET is_challenge_1 = ?,
-            is_challenge_2 = ?,
-            is_challenge_3 = ?
+        SET is_round_1 = ?,
+            is_round_2 = ?,
+            is_round_3 = ?
         WHERE discord_id = ?
       `,
       )
-      .run(
-        state.isChallenge1 ? 1 : 0,
-        state.isChallenge2 ? 1 : 0,
-        state.isChallenge3 ? 1 : 0,
-        discordId,
-      );
+      .run(state.isRound1 ? 1 : 0, state.isRound2 ? 1 : 0, state.isRound3 ? 1 : 0, discordId);
   }
 
   /**
-   * Sets a single challenge stage flag across multiple students inside an atomic transaction.
+   * Sets a single round flag across multiple students inside an atomic transaction.
    *
    * @param studentIds the list of student identifiers to update
-   * @param stage the challenge stage column to modify
-   * @param value true to enable the stage flag, false to clear it
+   * @param round the round column to modify
+   * @param value true to enable the round flag, false to clear it
    */
-  public setChallengeFlagForMany(
-    studentIds: string[],
-    stage: ChallengeStageKey,
-    value: boolean,
-  ): void {
+  public setRoundFlagForMany(studentIds: string[], round: RoundKey, value: boolean): void {
     if (studentIds.length === 0) {
       return;
     }
 
-    const column = this.resolveStageColumn(stage);
+    const column = this.resolveRoundColumn(round);
     const connection = this.databaseClient.getConnection();
     const statement = connection.prepare(`UPDATE students SET ${column} = ? WHERE student_id = ?`);
 
@@ -259,19 +250,19 @@ export class StudentRepository {
   }
 
   /**
-   * Resolves a ChallengeStageKey literal to its corresponding SQLite column name.
+   * Resolves a RoundKey literal to its corresponding SQLite column name.
    *
-   * @param stage the challenge stage union value
+   * @param round the round union value
    * @returns the exact SQLite column name
    */
-  private resolveStageColumn(stage: ChallengeStageKey): string {
-    switch (stage) {
-      case 'challenge-1':
-        return 'is_challenge_1';
-      case 'challenge-2':
-        return 'is_challenge_2';
-      case 'challenge-3':
-        return 'is_challenge_3';
+  private resolveRoundColumn(round: RoundKey): string {
+    switch (round) {
+      case 'round-1':
+        return 'is_round_1';
+      case 'round-2':
+        return 'is_round_2';
+      case 'round-3':
+        return 'is_round_3';
     }
   }
 
@@ -287,9 +278,9 @@ export class StudentRepository {
       fullName: row.full_name,
       discordId: row.discord_id,
       isVerified: row.is_verified === 1,
-      isChallenge1: row.is_challenge_1 === 1,
-      isChallenge2: row.is_challenge_2 === 1,
-      isChallenge3: row.is_challenge_3 === 1,
+      isRound1: row.is_round_1 === 1,
+      isRound2: row.is_round_2 === 1,
+      isRound3: row.is_round_3 === 1,
     };
   }
 }

@@ -1,7 +1,7 @@
 /**
- * Validated recruitment stage identifier matching the three configured challenge roles.
+ * Validated recruitment round identifier matching the three configured round roles.
  */
-export type ChallengeStageKey = 'challenge-1' | 'challenge-2' | 'challenge-3';
+export type RoundKey = 'round-1' | 'round-2' | 'round-3';
 
 /**
  * Domain entity representing a verified student persisted in the SQLite students table.
@@ -11,9 +11,9 @@ export interface Student {
   fullName: string;
   discordId: string;
   isVerified: boolean;
-  isChallenge1: boolean;
-  isChallenge2: boolean;
-  isChallenge3: boolean;
+  isRound1: boolean;
+  isRound2: boolean;
+  isRound3: boolean;
 }
 
 /**

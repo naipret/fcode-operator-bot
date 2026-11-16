@@ -1,15 +1,15 @@
 import { Events, type GuildMember, type Interaction, MessageFlags, REST, Routes } from 'discord.js';
 import { createDiscordClient } from './client.js';
 import { ConfigLoader } from './config/ConfigLoader.js';
-import { ChallengeController } from './controller/ChallengeController.js';
+import { RoundController } from './controller/RoundController.js';
 import { StudentController } from './controller/StudentController.js';
 import { VerificationController } from './controller/VerificationController.js';
 import { DatabaseClient } from './repository/DatabaseClient.js';
 import { StudentRepository } from './repository/StudentRepository.js';
 import { GuildResourceResolver } from './util/GuildResourceResolver.js';
 import { Logger } from './util/Logger.js';
-import { ChallengeCommandView } from './view/ChallengeCommandView.js';
 import { EmbedFactory } from './view/EmbedFactory.js';
+import { RoundCommandView } from './view/RoundCommandView.js';
 import { StudentCommandView } from './view/StudentCommandView.js';
 import { VerifyCommandView } from './view/VerifyCommandView.js';
 
@@ -40,13 +40,13 @@ async function registerGuildCommands(
  * @param interaction the incoming Discord interaction
  * @param verifyView the verification command view
  * @param studentView the student command view
- * @param challengeView the challenge command view
+ * @param roundView the round command view
  */
 async function dispatchInteraction(
   interaction: Interaction,
   verifyView: VerifyCommandView,
   studentView: StudentCommandView,
-  challengeView: ChallengeCommandView,
+  roundView: RoundCommandView,
 ): Promise<void> {
   try {
     if (interaction.isChatInputCommand()) {
@@ -57,8 +57,8 @@ async function dispatchInteraction(
         case 'student':
           await studentView.handleSlashCommand(interaction);
           return;
-        case 'challenge':
-          await challengeView.handleSlashCommand(interaction);
+        case 'round':
+          await roundView.handleSlashCommand(interaction);
           return;
       }
       return;
@@ -69,8 +69,8 @@ async function dispatchInteraction(
         await verifyView.handleVerifyButton(interaction);
         return;
       }
-      if (challengeView.ownsCustomId(interaction.customId)) {
-        await challengeView.handleButton(interaction);
+      if (roundView.ownsCustomId(interaction.customId)) {
+        await roundView.handleButton(interaction);
       }
       return;
     }
@@ -83,8 +83,8 @@ async function dispatchInteraction(
     }
 
     if (interaction.isUserSelectMenu()) {
-      if (challengeView.ownsCustomId(interaction.customId)) {
-        await challengeView.handleUserSelectMenu(interaction);
+      if (roundView.ownsCustomId(interaction.customId)) {
+        await roundView.handleUserSelectMenu(interaction);
       }
     }
   } catch (error) {
@@ -133,7 +133,7 @@ async function bootstrap(): Promise<void> {
     resourceResolver,
   );
   const studentController = new StudentController(appConfig, studentRepository, resourceResolver);
-  const challengeController = new ChallengeController(studentRepository, resourceResolver);
+  const roundController = new RoundController(studentRepository, resourceResolver);
 
   const verifyView = new VerifyCommandView(
     appConfig,
@@ -142,7 +142,7 @@ async function bootstrap(): Promise<void> {
     resourceResolver,
   );
   const studentView = new StudentCommandView(studentController, resourceResolver);
-  const challengeView = new ChallengeCommandView(appConfig, challengeController, resourceResolver);
+  const roundView = new RoundCommandView(appConfig, roundController, resourceResolver);
 
   const client = createDiscordClient();
 
@@ -196,7 +196,7 @@ async function bootstrap(): Promise<void> {
         [
           verifyView.getCommandDefinition().toJSON(),
           studentView.getCommandDefinition().toJSON(),
-          challengeView.getCommandDefinition().toJSON(),
+          roundView.getCommandDefinition().toJSON(),
         ],
       );
     })().catch((error) => {
@@ -216,7 +216,7 @@ async function bootstrap(): Promise<void> {
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    void dispatchInteraction(interaction, verifyView, studentView, challengeView);
+    void dispatchInteraction(interaction, verifyView, studentView, roundView);
   });
 
   const shutdown = (signal: string): void => {

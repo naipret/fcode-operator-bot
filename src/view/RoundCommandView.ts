@@ -11,8 +11,8 @@ import {
   type UserSelectMenuInteraction,
 } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
-import type { ChallengeController } from '../controller/ChallengeController.js';
-import type { ChallengeStageKey } from '../model/Student.js';
+import type { RoundController } from '../controller/RoundController.js';
+import type { RoundKey } from '../model/Student.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { InputValidator } from '../util/InputValidator.js';
 import { Logger } from '../util/Logger.js';
@@ -22,25 +22,25 @@ import { VERIFY_PANEL_BUTTON_ID } from './VerifyCommandView.js';
 /**
  * Custom identifier prefix for advancing all eligible students without exclusions.
  */
-const ADVANCE_CONFIRM_PREFIX = 'fcode-challenge-advance-confirm:';
+const ADVANCE_CONFIRM_PREFIX = 'fcode-round-advance-confirm:';
 
 /**
- * Custom identifier prefix for selecting members to exclude during stage promotion.
+ * Custom identifier prefix for selecting members to exclude during round promotion.
  */
-const ADVANCE_EXCLUDE_SELECT_PREFIX = 'fcode-challenge-advance-exclude:';
+const ADVANCE_EXCLUDE_SELECT_PREFIX = 'fcode-round-advance-exclude:';
 
 /**
- * Custom identifier prefix for multi-user stage role revocation select menus.
+ * Custom identifier prefix for multi-user round role revocation select menus.
  */
-const REVOKE_SELECT_PREFIX = 'fcode-challenge-revoke-select:';
+const REVOKE_SELECT_PREFIX = 'fcode-round-revoke-select:';
 
 /**
- * Pending interactive stage advance confirmation context.
+ * Pending interactive round advance confirmation context.
  */
 interface PendingAdvanceOperation {
   ownerId: string;
-  fromStage: 'challenge-1' | 'challenge-2';
-  toStage: 'challenge-2' | 'challenge-3';
+  fromRound: 'round-1' | 'round-2';
+  toRound: 'round-2' | 'round-3';
   expiresAtMs: number;
 }
 
@@ -49,72 +49,72 @@ interface PendingAdvanceOperation {
  */
 interface PendingRevokeOperation {
   ownerId: string;
-  stage: ChallengeStageKey;
+  round: RoundKey;
   expiresAtMs: number;
 }
 
 /**
- * Presents the owner-only /challenge slash commands and multi-user select interactions.
+ * Presents the owner-only /round slash commands and multi-user select interactions.
  */
-export class ChallengeCommandView {
+export class RoundCommandView {
   private static readonly SESSION_TTL_MS = 10 * 60 * 1000;
   private readonly appConfig: AppConfig;
-  private readonly challengeController: ChallengeController;
+  private readonly roundController: RoundController;
   private readonly resourceResolver: GuildResourceResolver;
   private readonly pendingAdvances: Map<string, PendingAdvanceOperation>;
   private readonly pendingRevokes: Map<string, PendingRevokeOperation>;
 
   /**
-   * Creates a ChallengeCommandView bound to AppConfig, ChallengeController, and GuildResourceResolver.
+   * Creates a RoundCommandView bound to AppConfig, RoundController, and GuildResourceResolver.
    *
    * @param appConfig the validated application configuration
-   * @param challengeController the challenge operations controller
+   * @param roundController the round operations controller
    * @param resourceResolver the guild resource resolver
    */
   public constructor(
     appConfig: AppConfig,
-    challengeController: ChallengeController,
+    roundController: RoundController,
     resourceResolver: GuildResourceResolver,
   ) {
     this.appConfig = appConfig;
-    this.challengeController = challengeController;
+    this.roundController = roundController;
     this.resourceResolver = resourceResolver;
     this.pendingAdvances = new Map<string, PendingAdvanceOperation>();
     this.pendingRevokes = new Map<string, PendingRevokeOperation>();
   }
 
   /**
-   * Builds the /challenge slash command definition with advance, revoke, verify, and verify-panel subcommands.
+   * Builds the /round slash command definition with advance, revoke, verify, and verify-panel subcommands.
    *
-   * @returns a SlashCommandBuilder defining /challenge
+   * @returns a SlashCommandBuilder defining /round
    */
   public getCommandDefinition(): SlashCommandBuilder {
     return new SlashCommandBuilder()
-      .setName('challenge')
-      .setDescription('Manage recruitment stages and verification controls (owner only).')
+      .setName('round')
+      .setDescription('Manage recruitment rounds and verification controls (owner only).')
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .addSubcommand((subcommand) =>
         subcommand
           .setName('advance')
-          .setDescription('Advance students from one challenge stage to a higher stage.')
+          .setDescription('Advance students from one recruitment round to a higher round.')
           .addStringOption((option) =>
             option
               .setName('from')
-              .setDescription('Source challenge stage.')
+              .setDescription('Source recruitment round.')
               .setRequired(true)
               .addChoices(
-                { name: 'challenge-1', value: 'challenge-1' },
-                { name: 'challenge-2', value: 'challenge-2' },
+                { name: 'round-1', value: 'round-1' },
+                { name: 'round-2', value: 'round-2' },
               ),
           )
           .addStringOption((option) =>
             option
               .setName('to')
-              .setDescription('Target challenge stage (defaults to the next stage).')
+              .setDescription('Target recruitment round (defaults to the next round).')
               .setRequired(false)
               .addChoices(
-                { name: 'challenge-2', value: 'challenge-2' },
-                { name: 'challenge-3', value: 'challenge-3' },
+                { name: 'round-2', value: 'round-2' },
+                { name: 'round-3', value: 'round-3' },
               ),
           )
           .addStringOption((option) =>
@@ -133,16 +133,16 @@ export class ChallengeCommandView {
       .addSubcommand((subcommand) =>
         subcommand
           .setName('revoke')
-          .setDescription('Bulk remove a challenge stage role from multiple members.')
+          .setDescription('Bulk remove a round role from multiple members.')
           .addStringOption((option) =>
             option
               .setName('role')
-              .setDescription('Challenge stage role to remove.')
+              .setDescription('Round role to remove.')
               .setRequired(true)
               .addChoices(
-                { name: 'challenge-1', value: 'challenge-1' },
-                { name: 'challenge-2', value: 'challenge-2' },
-                { name: 'challenge-3', value: 'challenge-3' },
+                { name: 'round-1', value: 'round-1' },
+                { name: 'round-2', value: 'round-2' },
+                { name: 'round-3', value: 'round-3' },
               ),
           )
           .addStringOption((option) =>
@@ -180,10 +180,10 @@ export class ChallengeCommandView {
   }
 
   /**
-   * Checks whether a component customId belongs to ChallengeCommandView.
+   * Checks whether a component customId belongs to RoundCommandView.
    *
    * @param customId the component custom identifier
-   * @returns true if owned by ChallengeCommandView
+   * @returns true if owned by RoundCommandView
    */
   public ownsCustomId(customId: string): boolean {
     return (
@@ -194,7 +194,7 @@ export class ChallengeCommandView {
   }
 
   /**
-   * Handles incoming /challenge slash command invocations after enforcing owner-only authorization.
+   * Handles incoming /round slash command invocations after enforcing owner-only authorization.
    *
    * @param interaction the slash command interaction
    */
@@ -217,7 +217,7 @@ export class ChallengeCommandView {
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Owner Authorization Required',
-            'Only the Server Owner or holders of the configured owner role can execute `/challenge` commands.',
+            'Only the Server Owner or holders of the configured owner role can execute `/round` commands.',
           ),
         ],
       });
@@ -229,8 +229,8 @@ export class ChallengeCommandView {
 
     if (subcommand === 'verify') {
       const enabled = interaction.options.getBoolean('enabled', true);
-      this.challengeController.setVerificationEnabled(enabled);
-      Logger.info('ChallengeCommandView', 'Updated verification gate state', {
+      this.roundController.setVerificationEnabled(enabled);
+      Logger.info('RoundCommandView', 'Updated verification gate state', {
         callerId: interaction.user.id,
         enabled,
       });
@@ -278,7 +278,7 @@ export class ChallengeCommandView {
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Session Expired',
-            'This stage promotion prompt has expired. Please run `/challenge advance` again.',
+            'This round promotion prompt has expired. Please run `/round advance` again.',
           ),
         ],
         components: [],
@@ -289,16 +289,16 @@ export class ChallengeCommandView {
     this.pendingAdvances.delete(token);
     await interaction.deferUpdate();
 
-    const candidates = this.challengeController.resolveCandidatesForAdvance(pending.fromStage);
-    const result = await this.challengeController.advanceStudentsToStage(
+    const candidates = this.roundController.resolveCandidatesForAdvance(pending.fromRound);
+    const result = await this.roundController.advanceStudentsToRound(
       interaction.guild,
       candidates,
-      pending.toStage,
+      pending.toRound,
     );
-    Logger.info('ChallengeCommandView', 'Completed stage advancement via confirmation button', {
+    Logger.info('RoundCommandView', 'Completed round advancement via confirmation button', {
       callerId: interaction.user.id,
-      fromStage: pending.fromStage,
-      toStage: pending.toStage,
+      fromRound: pending.fromRound,
+      toRound: pending.toRound,
       updatedCount: result.updatedCount,
       failedCount: result.failedMembers.length,
     });
@@ -306,8 +306,8 @@ export class ChallengeCommandView {
     await interaction.editReply({
       embeds: [
         EmbedFactory.buildBatchMutationEmbed(
-          'Stage Advancement Complete',
-          `Promoted eligible students from \`${pending.fromStage}\` to \`${pending.toStage}\`.`,
+          'Round Advancement Complete',
+          `Promoted eligible students from \`${pending.fromRound}\` to \`${pending.toRound}\`.`,
           result,
         ),
       ],
@@ -333,10 +333,7 @@ export class ChallengeCommandView {
       if (!pending || pending.ownerId !== interaction.user.id || pending.expiresAtMs < Date.now()) {
         await interaction.update({
           embeds: [
-            EmbedFactory.buildErrorEmbed(
-              'Session Expired',
-              'Please run `/challenge advance` again.',
-            ),
+            EmbedFactory.buildErrorEmbed('Session Expired', 'Please run `/round advance` again.'),
           ],
           components: [],
         });
@@ -347,20 +344,20 @@ export class ChallengeCommandView {
       await interaction.deferUpdate();
 
       const excludeMentionString = selectedDiscordIds.map((id) => `<@${id}>`).join(' ');
-      const candidates = this.challengeController.resolveCandidatesForAdvance(
-        pending.fromStage,
+      const candidates = this.roundController.resolveCandidatesForAdvance(
+        pending.fromRound,
         excludeMentionString,
         null,
       );
-      const result = await this.challengeController.advanceStudentsToStage(
+      const result = await this.roundController.advanceStudentsToRound(
         interaction.guild,
         candidates,
-        pending.toStage,
+        pending.toRound,
       );
-      Logger.info('ChallengeCommandView', 'Completed stage advancement with exclusions', {
+      Logger.info('RoundCommandView', 'Completed round advancement with exclusions', {
         callerId: interaction.user.id,
-        fromStage: pending.fromStage,
-        toStage: pending.toStage,
+        fromRound: pending.fromRound,
+        toRound: pending.toRound,
         excludedCount: selectedDiscordIds.length,
         updatedCount: result.updatedCount,
         failedCount: result.failedMembers.length,
@@ -369,8 +366,8 @@ export class ChallengeCommandView {
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildBatchMutationEmbed(
-            'Stage Advancement Complete',
-            `Promoted students from \`${pending.fromStage}\` to \`${pending.toStage}\` excluding \`${selectedDiscordIds.length}\` selected member(s).`,
+            'Round Advancement Complete',
+            `Promoted students from \`${pending.fromRound}\` to \`${pending.toRound}\` excluding \`${selectedDiscordIds.length}\` selected member(s).`,
             result,
           ),
         ],
@@ -385,10 +382,7 @@ export class ChallengeCommandView {
       if (!pending || pending.ownerId !== interaction.user.id || pending.expiresAtMs < Date.now()) {
         await interaction.update({
           embeds: [
-            EmbedFactory.buildErrorEmbed(
-              'Session Expired',
-              'Please run `/challenge revoke` again.',
-            ),
+            EmbedFactory.buildErrorEmbed('Session Expired', 'Please run `/round revoke` again.'),
           ],
           components: [],
         });
@@ -398,15 +392,15 @@ export class ChallengeCommandView {
       this.pendingRevokes.delete(token);
       await interaction.deferUpdate();
 
-      const result = await this.challengeController.revokeStageRoleFromTargets(
+      const result = await this.roundController.revokeRoundRoleFromTargets(
         interaction.guild,
-        pending.stage,
+        pending.round,
         selectedDiscordIds,
         [],
       );
-      Logger.info('ChallengeCommandView', 'Completed stage revocation via user select menu', {
+      Logger.info('RoundCommandView', 'Completed round revocation via user select menu', {
         callerId: interaction.user.id,
-        stage: pending.stage,
+        round: pending.round,
         updatedCount: result.updatedCount,
         failedCount: result.failedMembers.length,
       });
@@ -414,8 +408,8 @@ export class ChallengeCommandView {
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildBatchMutationEmbed(
-            'Stage Role Revoked',
-            `Removed \`${pending.stage}\` from selected members.`,
+            'Round Role Revoked',
+            `Removed \`${pending.round}\` from selected members.`,
             result,
           ),
         ],
@@ -474,7 +468,7 @@ export class ChallengeCommandView {
 
     if (existingPanel) {
       await existingPanel.edit({ embeds: [panelEmbed], components: [panelRow] });
-      Logger.info('ChallengeCommandView', 'Updated existing verification panel', {
+      Logger.info('RoundCommandView', 'Updated existing verification panel', {
         callerId: interaction.user.id,
         channelId: targetChannel.id,
       });
@@ -490,7 +484,7 @@ export class ChallengeCommandView {
     }
 
     await targetChannel.send({ embeds: [panelEmbed], components: [panelRow] });
-    Logger.info('ChallengeCommandView', 'Posted verification panel', {
+    Logger.info('RoundCommandView', 'Posted verification panel', {
       callerId: interaction.user.id,
       channelId: targetChannel.id,
     });
@@ -505,7 +499,7 @@ export class ChallengeCommandView {
   }
 
   /**
-   * Processes /challenge advance inline or opens the interactive multi-user exclusion prompt.
+   * Processes /round advance inline or opens the interactive multi-user exclusion prompt.
    *
    * @param interaction the slash command interaction
    */
@@ -514,8 +508,8 @@ export class ChallengeCommandView {
       return;
     }
 
-    const fromStage = interaction.options.getString('from', true) as 'challenge-1' | 'challenge-2';
-    const rawToStage = interaction.options.getString('to') as 'challenge-2' | 'challenge-3' | null;
+    const fromRound = interaction.options.getString('from', true) as 'round-1' | 'round-2';
+    const rawToRound = interaction.options.getString('to') as 'round-2' | 'round-3' | null;
     const excludeInput = interaction.options.getString('exclude');
     const onlyInput = interaction.options.getString('only');
 
@@ -531,13 +525,13 @@ export class ChallengeCommandView {
       return;
     }
 
-    const targetStage = this.challengeController.resolveTargetStage(fromStage, rawToStage);
-    if (!targetStage) {
+    const targetRound = this.roundController.resolveTargetRound(fromRound, rawToRound);
+    if (!targetRound) {
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
-            'Invalid Stage Progression',
-            `Cannot advance from \`${fromStage}\` to \`${rawToStage ?? 'unknown'}\`.`,
+            'Invalid Round Progression',
+            `Cannot advance from \`${fromRound}\` to \`${rawToRound ?? 'unknown'}\`.`,
           ),
         ],
       });
@@ -545,20 +539,20 @@ export class ChallengeCommandView {
     }
 
     if (excludeInput || onlyInput) {
-      const candidates = this.challengeController.resolveCandidatesForAdvance(
-        fromStage,
+      const candidates = this.roundController.resolveCandidatesForAdvance(
+        fromRound,
         excludeInput,
         onlyInput,
       );
-      const result = await this.challengeController.advanceStudentsToStage(
+      const result = await this.roundController.advanceStudentsToRound(
         interaction.guild,
         candidates,
-        targetStage,
+        targetRound,
       );
-      Logger.info('ChallengeCommandView', 'Completed filtered stage advancement', {
+      Logger.info('RoundCommandView', 'Completed filtered round advancement', {
         callerId: interaction.user.id,
-        fromStage,
-        toStage: targetStage,
+        fromRound,
+        toRound: targetRound,
         updatedCount: result.updatedCount,
         failedCount: result.failedMembers.length,
       });
@@ -566,8 +560,8 @@ export class ChallengeCommandView {
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildBatchMutationEmbed(
-            'Stage Advancement Complete',
-            `Promoted filtered students from \`${fromStage}\` to \`${targetStage}\`.`,
+            'Round Advancement Complete',
+            `Promoted filtered students from \`${fromRound}\` to \`${targetRound}\`.`,
             result,
           ),
         ],
@@ -575,13 +569,13 @@ export class ChallengeCommandView {
       return;
     }
 
-    const allEligible = this.challengeController.resolveCandidatesForAdvance(fromStage);
+    const allEligible = this.roundController.resolveCandidatesForAdvance(fromRound);
     if (allEligible.length === 0) {
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildWarningEmbed(
             'No Eligible Candidates',
-            `No verified students currently hold \`${fromStage}\`.`,
+            `No verified students currently hold \`${fromRound}\`.`,
           ),
         ],
       });
@@ -592,9 +586,9 @@ export class ChallengeCommandView {
     const token = `${interaction.user.id}-${Date.now()}`;
     this.pendingAdvances.set(token, {
       ownerId: interaction.user.id,
-      fromStage,
-      toStage: targetStage,
-      expiresAtMs: Date.now() + ChallengeCommandView.SESSION_TTL_MS,
+      fromRound,
+      toRound: targetRound,
+      expiresAtMs: Date.now() + RoundCommandView.SESSION_TTL_MS,
     });
 
     const excludeSelect = new UserSelectMenuBuilder()
@@ -611,8 +605,8 @@ export class ChallengeCommandView {
     await interaction.editReply({
       embeds: [
         EmbedFactory.buildInfoEmbed(
-          'Confirm Stage Advancement',
-          `Ready to advance \`${allEligible.length}\` student(s) from \`${fromStage}\` to \`${targetStage}\`.\n\nUse the user selector below to exclude dropped or eliminated candidates, or click the button to advance everyone.`,
+          'Confirm Round Advancement',
+          `Ready to advance \`${allEligible.length}\` student(s) from \`${fromRound}\` to \`${targetRound}\`.\n\nUse the user selector below to exclude dropped or eliminated candidates, or click the button to advance everyone.`,
         ),
       ],
       components: [
@@ -623,7 +617,7 @@ export class ChallengeCommandView {
   }
 
   /**
-   * Processes /challenge revoke inline or opens the multi-user picker.
+   * Processes /round revoke inline or opens the multi-user picker.
    *
    * @param interaction the slash command interaction
    */
@@ -632,28 +626,28 @@ export class ChallengeCommandView {
       return;
     }
 
-    const stage = interaction.options.getString('role', true) as ChallengeStageKey;
+    const round = interaction.options.getString('role', true) as RoundKey;
     const usersInput = interaction.options.getString('users');
 
     if (usersInput && usersInput.trim().length > 0) {
       const tokens = InputValidator.parseTargetTokens(usersInput);
-      const result = await this.challengeController.revokeStageRoleFromTargets(
+      const result = await this.roundController.revokeRoundRoleFromTargets(
         interaction.guild,
-        stage,
+        round,
         tokens.discordIds,
         tokens.studentIds,
       );
-      Logger.info('ChallengeCommandView', 'Completed inline stage revocation', {
+      Logger.info('RoundCommandView', 'Completed inline round revocation', {
         callerId: interaction.user.id,
-        stage,
+        round,
         updatedCount: result.updatedCount,
         failedCount: result.failedMembers.length,
       });
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildBatchMutationEmbed(
-            'Stage Role Revoked',
-            `Removed \`${stage}\` from specified targets.`,
+            'Round Role Revoked',
+            `Removed \`${round}\` from specified targets.`,
             result,
           ),
         ],
@@ -665,13 +659,13 @@ export class ChallengeCommandView {
     const token = `${interaction.user.id}-${Date.now()}`;
     this.pendingRevokes.set(token, {
       ownerId: interaction.user.id,
-      stage,
-      expiresAtMs: Date.now() + ChallengeCommandView.SESSION_TTL_MS,
+      round,
+      expiresAtMs: Date.now() + RoundCommandView.SESSION_TTL_MS,
     });
 
     const userSelect = new UserSelectMenuBuilder()
       .setCustomId(`${REVOKE_SELECT_PREFIX}${token}`)
-      .setPlaceholder(`Select up to 25 members to remove ${stage} from`)
+      .setPlaceholder(`Select up to 25 members to remove ${round} from`)
       .setMinValues(1)
       .setMaxValues(25);
 
@@ -679,7 +673,7 @@ export class ChallengeCommandView {
       embeds: [
         EmbedFactory.buildInfoEmbed(
           'Select Members to Revoke',
-          `Choose one or more members below to remove \`${stage}\` from both Discord and SQLite.`,
+          `Choose one or more members below to remove \`${round}\` from both Discord and SQLite.`,
         ),
       ],
       components: [new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(userSelect)],

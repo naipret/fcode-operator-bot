@@ -154,9 +154,9 @@ export class VerificationController {
         fullName: nicknameResult.formattedFullName,
         discordId: member.id,
         isVerified: true,
-        isChallenge1: true,
-        isChallenge2: false,
-        isChallenge3: false,
+        isRound1: true,
+        isRound2: false,
+        isRound3: false,
       };
 
       const targetRoleIds = this.computeDesiredRoleIds(member, studentRecord);
@@ -174,11 +174,11 @@ export class VerificationController {
         nickname: nicknameResult.nickname,
       });
 
-      const stage1RoleId = this.resourceResolver.getStageRoleId('challenge-1');
+      const round1RoleId = this.resourceResolver.getRoundRoleId('round-1');
       return {
         status: 'VERIFIED',
         title: this.appConfig.messages.verificationSuccessTitle,
-        description: `Your identity has been verified.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${nicknameResult.nickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nUnlocked Stage: <@&${stage1RoleId}>`,
+        description: `Your identity has been verified.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${nicknameResult.nickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nUnlocked Round: <@&${round1RoleId}>`,
         student: studentRecord,
         appliedNickname: nicknameResult.nickname,
         nicknameHierarchyWarning: hierarchyWarning ?? undefined,
@@ -199,31 +199,31 @@ export class VerificationController {
       return;
     }
 
-    const { stageRoleIds } = this.appConfig.permissions;
-    const isChallenge1 = member.roles.cache.has(stageRoleIds.challenge1);
-    const isChallenge2 = member.roles.cache.has(stageRoleIds.challenge2);
-    const isChallenge3 = member.roles.cache.has(stageRoleIds.challenge3);
+    const { roundRoleIds } = this.appConfig.permissions;
+    const isRound1 = member.roles.cache.has(roundRoleIds.round1);
+    const isRound2 = member.roles.cache.has(roundRoleIds.round2);
+    const isRound3 = member.roles.cache.has(roundRoleIds.round3);
 
     const hasChanged =
-      existingStudent.isChallenge1 !== isChallenge1 ||
-      existingStudent.isChallenge2 !== isChallenge2 ||
-      existingStudent.isChallenge3 !== isChallenge3;
+      existingStudent.isRound1 !== isRound1 ||
+      existingStudent.isRound2 !== isRound2 ||
+      existingStudent.isRound3 !== isRound3;
 
     if (!hasChanged) {
       return;
     }
 
     this.studentRepository.syncRoleStateByDiscordId(member.id, {
-      isChallenge1,
-      isChallenge2,
-      isChallenge3,
+      isRound1,
+      isRound2,
+      isRound3,
     });
     Logger.info('VerificationController', 'Synchronized member role update to database', {
       discordId: member.id,
       studentId: existingStudent.studentId,
-      isChallenge1,
-      isChallenge2,
-      isChallenge3,
+      isRound1,
+      isRound2,
+      isRound3,
     });
   }
 
@@ -276,11 +276,11 @@ export class VerificationController {
       restoredRolesCount: missingRoles.length,
     });
 
-    const restoredStages = this.formatActiveStagesSummary(student);
+    const restoredRounds = this.formatActiveRoundsSummary(student);
     return {
       status: 'RESTORED',
       title: this.appConfig.messages.verificationRestoredTitle,
-      description: `Welcome back. Your verified identity and assigned roles have been restored.\n\nFull Name: \`${student.fullName}\`\nNickname: \`${expectedNickname}\`\nStudent ID: \`${student.studentId}\`\nActive Stages: ${restoredStages}`,
+      description: `Welcome back. Your verified identity and assigned roles have been restored.\n\nFull Name: \`${student.fullName}\`\nNickname: \`${expectedNickname}\`\nStudent ID: \`${student.studentId}\`\nActive Rounds: ${restoredRounds}`,
       student,
       appliedNickname: expectedNickname,
       nicknameHierarchyWarning: hierarchyWarning ?? undefined,
@@ -295,39 +295,35 @@ export class VerificationController {
    * @returns deduplicated Discord role snowflake IDs to assign on the member
    */
   private computeDesiredRoleIds(member: GuildMember, student: Student): string[] {
-    const managedIds = this.getManagedStageRoleIdsSet();
+    const managedIds = this.getManagedRoundRoleIdsSet();
     const preservedRoleIds = member.roles.cache
       .filter((role) => role.id !== member.guild.id && !managedIds.has(role.id))
       .map((role) => role.id);
 
     const targetIds = new Set<string>(preservedRoleIds);
-    const { stageRoleIds } = this.appConfig.permissions;
+    const { roundRoleIds } = this.appConfig.permissions;
 
-    if (student.isChallenge1 && member.guild.roles.cache.has(stageRoleIds.challenge1)) {
-      targetIds.add(stageRoleIds.challenge1);
+    if (student.isRound1 && member.guild.roles.cache.has(roundRoleIds.round1)) {
+      targetIds.add(roundRoleIds.round1);
     }
-    if (student.isChallenge2 && member.guild.roles.cache.has(stageRoleIds.challenge2)) {
-      targetIds.add(stageRoleIds.challenge2);
+    if (student.isRound2 && member.guild.roles.cache.has(roundRoleIds.round2)) {
+      targetIds.add(roundRoleIds.round2);
     }
-    if (student.isChallenge3 && member.guild.roles.cache.has(stageRoleIds.challenge3)) {
-      targetIds.add(stageRoleIds.challenge3);
+    if (student.isRound3 && member.guild.roles.cache.has(roundRoleIds.round3)) {
+      targetIds.add(roundRoleIds.round3);
     }
 
     return Array.from(targetIds);
   }
 
   /**
-   * Collects all configured stage role Snowflake IDs managed by verification workflows.
+   * Collects all configured round role Snowflake IDs managed by verification workflows.
    *
-   * @returns a Set of configured stage role IDs
+   * @returns a Set of configured round role IDs
    */
-  private getManagedStageRoleIdsSet(): Set<string> {
-    const { stageRoleIds } = this.appConfig.permissions;
-    return new Set<string>([
-      stageRoleIds.challenge1,
-      stageRoleIds.challenge2,
-      stageRoleIds.challenge3,
-    ]);
+  private getManagedRoundRoleIdsSet(): Set<string> {
+    const { roundRoleIds } = this.appConfig.permissions;
+    return new Set<string>([roundRoleIds.round1, roundRoleIds.round2, roundRoleIds.round3]);
   }
 
   /**
@@ -397,21 +393,21 @@ export class VerificationController {
   }
 
   /**
-   * Formats active stage flags into a readable summary string with role mentions.
+   * Formats active round flags into a readable summary string with role mentions.
    *
    * @param student the student domain record
-   * @returns a formatted string listing active challenge stages or "None"
+   * @returns a formatted string listing active rounds or "None"
    */
-  private formatActiveStagesSummary(student: Student): string {
+  private formatActiveRoundsSummary(student: Student): string {
     const active: string[] = [];
-    if (student.isChallenge1) {
-      active.push(`<@&${this.resourceResolver.getStageRoleId('challenge-1')}>`);
+    if (student.isRound1) {
+      active.push(`<@&${this.resourceResolver.getRoundRoleId('round-1')}>`);
     }
-    if (student.isChallenge2) {
-      active.push(`<@&${this.resourceResolver.getStageRoleId('challenge-2')}>`);
+    if (student.isRound2) {
+      active.push(`<@&${this.resourceResolver.getRoundRoleId('round-2')}>`);
     }
-    if (student.isChallenge3) {
-      active.push(`<@&${this.resourceResolver.getStageRoleId('challenge-3')}>`);
+    if (student.isRound3) {
+      active.push(`<@&${this.resourceResolver.getRoundRoleId('round-3')}>`);
     }
     return active.length > 0 ? active.join(', ') : 'None';
   }

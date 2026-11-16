@@ -37,10 +37,10 @@ export const appConfigSchema = z.object({
   permissions: z.object({
     ownerRoleId: snowflakeSchema,
     moderatorRoleId: snowflakeSchema,
-    stageRoleIds: z.object({
-      challenge1: snowflakeSchema,
-      challenge2: snowflakeSchema,
-      challenge3: snowflakeSchema,
+    roundRoleIds: z.object({
+      round1: snowflakeSchema,
+      round2: snowflakeSchema,
+      round3: snowflakeSchema,
     }),
   }),
   database: z.object({

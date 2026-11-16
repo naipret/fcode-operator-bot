@@ -1,6 +1,6 @@
 import type { Guild, GuildMember, Role } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
-import type { ChallengeStageKey } from '../model/Student.js';
+import type { RoundKey } from '../model/Student.js';
 
 /**
  * Resolves configured Discord roles, support channel mentions, and caller authorization by Snowflake ID.
@@ -18,31 +18,31 @@ export class GuildResourceResolver {
   }
 
   /**
-   * Returns the configured Discord Snowflake ID for a given challenge stage key.
+   * Returns the configured Discord Snowflake ID for a given round key.
    *
-   * @param stageKey the challenge stage identifier
+   * @param roundKey the round identifier
    * @returns the configured Discord role Snowflake ID
    */
-  public getStageRoleId(stageKey: ChallengeStageKey): string {
-    switch (stageKey) {
-      case 'challenge-1':
-        return this.appConfig.permissions.stageRoleIds.challenge1;
-      case 'challenge-2':
-        return this.appConfig.permissions.stageRoleIds.challenge2;
-      case 'challenge-3':
-        return this.appConfig.permissions.stageRoleIds.challenge3;
+  public getRoundRoleId(roundKey: RoundKey): string {
+    switch (roundKey) {
+      case 'round-1':
+        return this.appConfig.permissions.roundRoleIds.round1;
+      case 'round-2':
+        return this.appConfig.permissions.roundRoleIds.round2;
+      case 'round-3':
+        return this.appConfig.permissions.roundRoleIds.round3;
     }
   }
 
   /**
-   * Resolves a configured challenge stage role from the guild cache by its Snowflake ID.
+   * Resolves a configured round role from the guild cache by its Snowflake ID.
    *
    * @param guild the target Discord guild
-   * @param stageKey the challenge stage identifier
+   * @param roundKey the round identifier
    * @returns the matching Discord Role or null when absent
    */
-  public getStageRole(guild: Guild, stageKey: ChallengeStageKey): Role | null {
-    return guild.roles.cache.get(this.getStageRoleId(stageKey)) ?? null;
+  public getRoundRole(guild: Guild, roundKey: RoundKey): Role | null {
+    return guild.roles.cache.get(this.getRoundRoleId(roundKey)) ?? null;
   }
 
   /**
@@ -102,19 +102,19 @@ export class GuildResourceResolver {
     if (!guild.roles.cache.has(this.appConfig.permissions.moderatorRoleId)) {
       missing.push(`permissions.moderatorRoleId (${this.appConfig.permissions.moderatorRoleId})`);
     }
-    if (!guild.roles.cache.has(this.appConfig.permissions.stageRoleIds.challenge1)) {
+    if (!guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round1)) {
       missing.push(
-        `permissions.stageRoleIds.challenge1 (${this.appConfig.permissions.stageRoleIds.challenge1})`,
+        `permissions.roundRoleIds.round1 (${this.appConfig.permissions.roundRoleIds.round1})`,
       );
     }
-    if (!guild.roles.cache.has(this.appConfig.permissions.stageRoleIds.challenge2)) {
+    if (!guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round2)) {
       missing.push(
-        `permissions.stageRoleIds.challenge2 (${this.appConfig.permissions.stageRoleIds.challenge2})`,
+        `permissions.roundRoleIds.round2 (${this.appConfig.permissions.roundRoleIds.round2})`,
       );
     }
-    if (!guild.roles.cache.has(this.appConfig.permissions.stageRoleIds.challenge3)) {
+    if (!guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round3)) {
       missing.push(
-        `permissions.stageRoleIds.challenge3 (${this.appConfig.permissions.stageRoleIds.challenge3})`,
+        `permissions.roundRoleIds.round3 (${this.appConfig.permissions.roundRoleIds.round3})`,
       );
     }
 
