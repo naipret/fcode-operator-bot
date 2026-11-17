@@ -133,12 +133,14 @@ export class SystemCommandView {
           .addStringOption((option) =>
             option
               .setName("role")
-              .setDescription("Staff role to assign or none to reset.")
+              .setDescription(
+                "Staff role to assign, or reset to clear all roles and DB record.",
+              )
               .setRequired(true)
               .addChoices(
                 { name: "moderator", value: "moderator" },
                 { name: "supporter", value: "supporter" },
-                { name: "none", value: "none" },
+                { name: "reset", value: "reset" },
               ),
           ),
       )
@@ -342,7 +344,7 @@ export class SystemCommandView {
 
     const targetUser = interaction.options.getUser("user", true);
     const targetRole = interaction.options.getString("role", true) as
-      "moderator" | "supporter" | "none";
+      "moderator" | "supporter" | "reset";
 
     const targetMember = await interaction.guild.members
       .fetch(targetUser.id)

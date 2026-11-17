@@ -420,7 +420,10 @@ export class StudentCommandView {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     const target = interaction.options.getString("target", true);
-    const outcome = this.studentController.lookupStudent(target);
+    const outcome = this.studentController.lookupStudent(
+      target,
+      interaction.guild ?? undefined,
+    );
     await interaction.editReply({
       embeds: [
         outcome.success

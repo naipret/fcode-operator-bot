@@ -110,12 +110,13 @@ export class StudentController {
   }
 
   /**
-   * Looks up a student or staff record by @mention, Discord ID, or Student ID.
+   * Looks up a verified candidate student record by @mention, Discord ID, or Student ID.
    *
    * @param target unified target identifier string
-   * @returns a StudentActionOutcome containing the stored member details if found
+   * @param guild optional Discord guild used to verify the member does not hold staff or owner roles
+   * @returns a StudentActionOutcome containing the stored candidate details if found
    */
-  public lookupStudent(target: string): StudentActionOutcome {
+  public lookupStudent(target: string, guild?: Guild): StudentActionOutcome {
     const student = this.resolveStudentByTarget(target);
     if (!student) {
       return {
@@ -126,15 +127,17 @@ export class StudentController {
       };
     }
 
-    const prefixOverride = this.resolvePrefixFromRecord(student);
+    const member = guild?.members.cache.get(student.discordId) ?? null;
+    if (this.isNonStudentOrStaff(student, member, guild ?? null)) {
+      return this.buildStaffRestrictedOutcome();
+    }
+
     const nickname = InputValidator.formatNickname(
       student.fullName,
       student.studentId,
       this.appConfig.bot,
-      prefixOverride ?? undefined,
     );
     const rounds = this.formatActiveRounds(student);
-    const staffSummary = this.formatStaffTierLabel(student);
 
     return {
       success: true,
@@ -143,7 +146,6 @@ export class StudentController {
         `Discord User: <@${student.discordId}> (\`${student.discordId}\`)`,
         `Full Name: \`${student.fullName}\``,
         `Computed Nickname: \`${nickname}\``,
-        `Role Tier: \`${staffSummary}\``,
         `Verified Candidate: \`${student.isVerified ? "Yes" : "No"}\``,
         `Active Rounds: ${rounds}`,
       ].join("\n"),
@@ -233,15 +235,15 @@ export class StudentController {
   }
 
   /**
-   * Promotes a verified member to moderator or supporter, or resets staff status with role:none.
+   * Promotes a verified member to moderator or supporter, or resets staff status with role:reset.
    *
    * @param member the target Discord guild member
-   * @param targetRole target staff role ("moderator" | "supporter" | "none")
+   * @param targetRole target staff role ("moderator" | "supporter" | "reset")
    * @returns a StudentActionOutcome describing the applied staff transition
    */
   public async manageStaffRole(
     member: GuildMember,
-    targetRole: "moderator" | "supporter" | "none",
+    targetRole: "moderator" | "supporter" | "reset",
   ): Promise<StudentActionOutcome> {
     const lockResult = await MemberMutationHelper.runWithMemberLock(
       this.lockedDiscordIds,
@@ -318,6 +320,19 @@ export class StudentController {
     rawFullName: string,
     rawStudentId: string,
   ): Promise<StudentActionOutcome> {
+    if (member.user.bot) {
+      return {
+        success: false,
+        title: "Invalid Target",
+        description: "Bot accounts cannot be registered as students.",
+      };
+    }
+
+    const existingByDiscord = this.studentRepository.findByDiscordId(member.id);
+    if (this.isNonStudentOrStaff(existingByDiscord, member, member.guild)) {
+      return this.buildStaffRestrictedOutcome();
+    }
+
     const validation = InputValidator.buildValidatedNickname(
       rawFullName,
       rawStudentId,
@@ -340,19 +355,6 @@ export class StudentController {
         title: "Duplicate Student ID",
         description: `Student ID \`${validation.studentId}\` is already assigned to <@${existingById.discordId}>. Reset that record first before reassigning it.`,
       };
-    }
-
-    const existingByDiscord = this.studentRepository.findByDiscordId(member.id);
-
-    const staffTier = this.resourceResolver.resolveStaffTier(member);
-    if (staffTier !== null) {
-      return await this.registerPreAssignedStaff(
-        member,
-        validation.studentId,
-        validation.formattedFullName,
-        staffTier,
-        existingByDiscord,
-      );
     }
 
     const student = this.buildManualStudentRecord(
@@ -393,71 +395,6 @@ export class StudentController {
   }
 
   /**
-   * Persists and applies staff profile when /student register targets a member with mod or sup roles.
-   *
-   * @param member the target Discord guild member
-   * @param studentId validated uppercase student ID
-   * @param fullName normalized Title Case full name
-   * @param staffTier active staff tier on Discord
-   * @returns a StudentActionOutcome
-   */
-  private async registerPreAssignedStaff(
-    member: GuildMember,
-    studentId: string,
-    fullName: string,
-    staffTier: "MOD" | "SUP",
-    existingByDiscord: Student | null,
-  ): Promise<StudentActionOutcome> {
-    const staffPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
-    const staffNickname = InputValidator.formatNickname(
-      fullName,
-      studentId,
-      this.appConfig.bot,
-      staffPrefix,
-    );
-    const staffRecord: Student = {
-      studentId,
-      fullName,
-      discordId: member.id,
-      isVerified: false,
-      isRound1: false,
-      isRound2: false,
-      isRound3: false,
-      isModerator: member.roles.cache.has(
-        this.resourceResolver.getModeratorRoleId(),
-      ),
-      isSupporter: member.roles.cache.has(
-        this.resourceResolver.getSupporterRoleId(),
-      ),
-    };
-    const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
-      member,
-      this.appConfig.permissions,
-      "KEEP",
-    );
-    const hierarchyWarning =
-      await MemberMutationHelper.applyMemberNicknameAndRoles(
-        member,
-        staffNickname,
-        roleIds,
-        "StudentController",
-      );
-    if (existingByDiscord && existingByDiscord.studentId !== studentId) {
-      this.studentRepository.replaceStudentRecord(member.id, staffRecord);
-    } else {
-      this.studentRepository.upsertStudent(staffRecord);
-    }
-    const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : "";
-
-    return {
-      success: true,
-      title: "Staff Registered Manually",
-      description: `Updated <@${member.id}> as staff successfully.\n\nFull Name: \`${fullName}\`\nNickname: \`${staffNickname}\`\nStudent ID: \`${studentId}\`${warningNote}`,
-      student: staffRecord,
-    };
-  }
-
-  /**
    * Executes independent round and identity updates on SQLite and Discord under member lock.
    *
    * @param guild the target Discord guild
@@ -470,6 +407,13 @@ export class StudentController {
     existingStudent: Student,
     updates: StudentUpdateInput,
   ): Promise<StudentActionOutcome> {
+    const member =
+      guild.members.cache.get(existingStudent.discordId) ??
+      (await guild.members.fetch(existingStudent.discordId).catch(() => null));
+    if (this.isNonStudentOrStaff(existingStudent, member, guild)) {
+      return this.buildStaffRestrictedOutcome();
+    }
+
     const rawFullName = updates.fullName ?? existingStudent.fullName;
     const rawStudentId = updates.studentId ?? existingStudent.studentId;
 
@@ -497,25 +441,22 @@ export class StudentController {
       };
     }
 
-    const isStaff = existingStudent.isModerator || existingStudent.isSupporter;
     const updatedStudent: Student = {
       studentId: validation.studentId,
       fullName: validation.formattedFullName,
       discordId: existingStudent.discordId,
-      isVerified: isStaff ? false : existingStudent.isVerified,
-      isRound1: isStaff ? false : updates.isRound1,
-      isRound2: isStaff ? false : updates.isRound2,
-      isRound3: isStaff ? false : updates.isRound3,
-      isModerator: existingStudent.isModerator,
-      isSupporter: existingStudent.isSupporter,
+      isVerified: existingStudent.isVerified,
+      isRound1: updates.isRound1,
+      isRound2: updates.isRound2,
+      isRound3: updates.isRound3,
+      isModerator: false,
+      isSupporter: false,
     };
 
-    const prefixOverride = this.resolvePrefixFromRecord(updatedStudent);
     const effectiveNickname = InputValidator.formatNickname(
       updatedStudent.fullName,
       updatedStudent.studentId,
       this.appConfig.bot,
-      prefixOverride ?? undefined,
     );
 
     const discordNote = await this.applyUpdatedMemberState(
@@ -534,28 +475,20 @@ export class StudentController {
     }
 
     const activeRounds = this.formatActiveRounds(updatedStudent);
-    const staffRoundNote =
-      isStaff && (updates.isRound1 || updates.isRound2 || updates.isRound3)
-        ? "Staff role flags are managed by `/system staff`; candidate round flags were kept disabled."
-        : null;
-    const notes = [discordNote, staffRoundNote].filter(
-      (entry): entry is string => entry !== null,
-    );
+    const noteLine = discordNote ? `\n\nNote: ${discordNote}` : "";
 
     return {
       success: true,
       title: "Student Updated",
-      description: [
-        `Updated <@${updatedStudent.discordId}> successfully.`,
-        "",
-        `Full Name: \`${updatedStudent.fullName}\``,
-        `Nickname: \`${effectiveNickname}\``,
-        `Student ID: \`${updatedStudent.studentId}\``,
-        `Active Rounds: ${activeRounds}`,
-        ...(notes.length > 0
-          ? ["", ...notes.map((note) => `Note: ${note}`)]
-          : []),
-      ].join("\n"),
+      description:
+        [
+          `Updated <@${updatedStudent.discordId}> successfully.`,
+          "",
+          `Full Name: \`${updatedStudent.fullName}\``,
+          `Nickname: \`${effectiveNickname}\``,
+          `Student ID: \`${updatedStudent.studentId}\``,
+          `Active Rounds: ${activeRounds}`,
+        ].join("\n") + noteLine,
       student: updatedStudent,
     };
   }
@@ -615,6 +548,10 @@ export class StudentController {
     const member = await guild.members
       .fetch(existingStudent.discordId)
       .catch(() => null);
+    if (this.isNonStudentOrStaff(existingStudent, member, guild)) {
+      return this.buildStaffRestrictedOutcome();
+    }
+
     let discordCleanupNote = "";
 
     if (member) {
@@ -647,14 +584,14 @@ export class StudentController {
    * Executes staff promotion, role switching, or system-level staff reset under member lock.
    *
    * @param member the target Discord guild member
-   * @param targetRole desired staff role or "none" to reset
+   * @param targetRole desired staff role or "reset" to clear all roles and DB record
    * @returns a StudentActionOutcome
    */
   private async executeManageStaffRole(
     member: GuildMember,
-    targetRole: "moderator" | "supporter" | "none",
+    targetRole: "moderator" | "supporter" | "reset",
   ): Promise<StudentActionOutcome> {
-    if (targetRole === "none") {
+    if (targetRole === "reset") {
       this.studentRepository.deleteByDiscordId(member.id);
       const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
         member,
@@ -971,38 +908,47 @@ export class StudentController {
   }
 
   /**
-   * Resolves the nickname prefix override from stored staff flags when present.
+   * Checks whether a record or guild member belongs to staff, owner, or non-student accounts.
    *
-   * @param student the stored Student entity
-   * @returns moderatorPrefix, supporterPrefix, or null for candidates
+   * @param student optional stored record
+   * @param member optional Discord guild member
+   * @param guild optional Discord guild
+   * @returns true if /student commands must reject this target
    */
-  private resolvePrefixFromRecord(student: Student): string | null {
-    if (student.isModerator) {
-      return this.appConfig.bot.moderatorPrefix;
+  private isNonStudentOrStaff(
+    student: Student | null,
+    member: GuildMember | null,
+    guild: Guild | null,
+  ): boolean {
+    if (
+      student &&
+      (student.isModerator || student.isSupporter || !student.isVerified)
+    ) {
+      return true;
     }
-    if (student.isSupporter) {
-      return this.appConfig.bot.supporterPrefix;
+    if (member && guild) {
+      if (this.resourceResolver.isOwnerOrHasOwnerRole(guild, member)) {
+        return true;
+      }
+      if (this.resourceResolver.resolveStaffTier(member) !== null) {
+        return true;
+      }
     }
-    return null;
+    return false;
   }
 
   /**
-   * Formats a human-readable role tier label from stored flags.
+   * Builds a standardized error outcome when /student targets a staff or owner account.
    *
-   * @param student the stored Student entity
-   * @returns role tier summary label
+   * @returns a StudentActionOutcome directing the caller to /system staff
    */
-  private formatStaffTierLabel(student: Student): string {
-    if (student.isModerator && student.isSupporter) {
-      return "Moderator + Supporter";
-    }
-    if (student.isModerator) {
-      return "Moderator";
-    }
-    if (student.isSupporter) {
-      return "Supporter";
-    }
-    return "Candidate";
+  private buildStaffRestrictedOutcome(): StudentActionOutcome {
+    return {
+      success: false,
+      title: "Student-Only Command",
+      description:
+        "`/student` only manages candidate student records. Staff and owner accounts must be managed by the Server Owner via `/system staff`.",
+    };
   }
 
   /**
