@@ -1,21 +1,8 @@
-# ==============================================================================
-# F-Code Operator Bot - Configuration Template
-# ==============================================================================
-# Copy this file to `config.yaml` and fill in the required Discord Snowflake IDs
-# before starting the bot.
-# ==============================================================================
-
 # ------------------------------------------------------------------------------
-# Section: bot
-# Controls standardized nickname formatting, student ID validation, and naming.
 # - clubCohortPrefix        : Prefix for nicknames (F22_Name_ID) and DB file
 #                             naming (./data/recruitment-f22.db).
-# - maxNicknameLength       : Maximum Discord nickname length (16-32).
-# - allowedCohorts          : Two-digit eligible cohort numbers (e.g., '22').
-# - allowedStudentIdPrefixes: Permitted two-letter campus/major prefixes.
-# - studentIdRegex          : Regex capturing the 2-digit cohort in group 1.
-# - fullNameRegex           : Unicode regex validating full name input.
-# - nicknameTemplate        : Must include {prefix}, {name}, and {studentId}.
+# - allowedCohorts          : Permitted two-digit eligible cohort numbers.
+# - allowedStudentIdPrefixes: Permitted two-letter campus and major prefixes.
 # ------------------------------------------------------------------------------
 bot:
   clubCohortPrefix: 'F22'
@@ -39,25 +26,16 @@ bot:
   nicknameTemplate: '{prefix}_{name}_{studentId}'
 
 # ------------------------------------------------------------------------------
-# Section: verification
-# Controls candidate self-verification behavior at startup.
-# - enabledByDefault: Initial verification gate state when the database is new.
-# - defaultRound    : Round granted automatically upon verification alongside
-#                     verifiedRoleId.
-#                     Options: 'none' | 'round-1' | 'round-2' | 'round-3'
+# - defaultRound: Options: 'none' | 'round-1' | 'round-2' | 'round-3'
 # ------------------------------------------------------------------------------
 verification:
   enabledByDefault: true
   defaultRound: 'none'
 
 # ------------------------------------------------------------------------------
-# Section: permissions
-# Discord Role Snowflake IDs governing bot authorization and candidate stages.
 # - ownerRoleId    : Grants full administrative access (/round, /system,
 #                    /student) equivalent to the Discord Server Owner.
 # - moderatorRoleId: Grants student support access (/student commands only).
-# - verifiedRoleId : Base role assigned immediately upon verification.
-# - roundRoleIds   : Role IDs for round1, round2, and round3.
 # ------------------------------------------------------------------------------
 permissions:
   ownerRoleId: ''
@@ -69,15 +47,10 @@ permissions:
     round3: ''
 
 # ------------------------------------------------------------------------------
-# Section: database
-# Controls SQLite storage, periodic Discord sync, and native VACUUM INTO backups.
-# - directory             : Folder holding recruitment-<prefix>.db.
-# - sync.enabled          : Periodically reconciles SQLite -> Discord changes.
-# - sync.intervalMinutes  : Sync interval in minutes (minimum: 1).
-# - backup.enabled        : Enables automatic native SQLite VACUUM INTO backups.
-# - backup.directory      : Folder storing timestamped .db backup snapshots.
-# - backup.intervalMinutes: Backup interval in minutes (1440 = 24 hours).
-# - backup.maxFiles       : Maximum backup files retained (oldest pruned).
+# - sync.enabled: Periodically pushes direct manual edits made inside the .db
+#                 file to Discord. Setting this to false does NOT disable normal
+#                 sync (startup sync, /verify, /student, /round,
+#                 guildMemberUpdate, and manual /system sync still run).
 # ------------------------------------------------------------------------------
 database:
   directory: './data'
@@ -91,21 +64,14 @@ database:
     maxFiles: 7
 
 # ------------------------------------------------------------------------------
-# Section: logging
-# Independent 3-tier Pino logging pipeline (file -> console -> discord).
-# Allowed levels for each tier: 'debug' | 'info' | 'warn' | 'error'
-# - file.enabled     : Writes daily structured JSON logs (YYYY-MM-DD.log).
-# - file.maxFiles    : Maximum daily log files retained (oldest pruned).
-# - console.enabled  : Writes colorized human-readable logs via pino-pretty.
-# - discord.enabled  : Batches logs to a Discord channel (2.5s window).
-# - discord.channelId: Required Discord channel Snowflake ID when enabled.
+# - levels: Options: 'debug' | 'info' | 'warn' | 'error'
 # ------------------------------------------------------------------------------
 logging:
   file:
     enabled: true
     level: 'debug'
     directory: './logs'
-    maxFiles: 14
+    maxFiles: 7
   console:
     enabled: true
     level: 'info'
@@ -114,10 +80,6 @@ logging:
     level: 'info'
     channelId: ''
 
-# ------------------------------------------------------------------------------
-# Section: messages
-# Customizable UI copy rendered in verification panels and outcome embeds.
-# ------------------------------------------------------------------------------
 messages:
   verificationPanelTitle: 'Verify'
   verificationPanelDescription: 'Click the button below to verify your student identity.'
