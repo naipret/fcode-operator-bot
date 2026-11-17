@@ -1,9 +1,9 @@
 ---
 name: Bug Report
 about: Report a runtime defect, permission mismatch, or unexpected command behavior
-title: 'fix: '
+title: "fix: "
 labels: bug
-assignees: ''
+assignees: ""
 ---
 
 ## Problem Description

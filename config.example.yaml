@@ -1,49 +1,49 @@
 bot:
-  clubCohortPrefix: 'F22'
+  clubCohortPrefix: "F22"
   maxNicknameLength: 32
   allowedCohorts:
-    - '20'
-    - '21'
-    - '22'
+    - "20"
+    - "21"
+    - "22"
   allowedStudentIdPrefixes:
-    - 'SE'
-    - 'SS'
-    - 'SA'
-    - 'CS'
-    - 'DS'
-    - 'IA'
-    - 'AI'
-    - 'MC'
-    - 'QE'
+    - "SE"
+    - "SS"
+    - "SA"
+    - "CS"
+    - "DS"
+    - "IA"
+    - "AI"
+    - "MC"
+    - "QE"
   studentIdRegex: '^[A-Za-z]{2}(\d{2})\d{4}$'
   fullNameRegex: '^[\p{L}\s]{2,60}$'
-  nicknameTemplate: '{prefix}_{name}_{studentId}'
+  nicknameTemplate: "{prefix}_{name}_{studentId}"
 
 # ------------------------------------------------------------------------------
 # - defaultRound: Options: 'none' | 'round-1' | 'round-2' | 'round-3'
 # ------------------------------------------------------------------------------
 verification:
   enabledByDefault: true
-  defaultRound: 'none'
+  defaultRound: "none"
 
 # ------------------------------------------------------------------------------
 # - ownerRoleId    : Grants full access (/system, /round, /student)
 # - moderatorRoleId: Grants student support access only (/student).
 # ------------------------------------------------------------------------------
 permissions:
-  ownerRoleId: ''
-  moderatorRoleId: ''
-  verifiedRoleId: ''
+  ownerRoleId: ""
+  moderatorRoleId: ""
+  verifiedRoleId: ""
   roundRoleIds:
-    round1: ''
-    round2: ''
-    round3: ''
+    round1: ""
+    round2: ""
+    round3: ""
 
 database:
-  directory: './data'
+  directory: "./data"
   backup:
     enabled: true
-    directory: './data/backups'
+    directory: "./data/backups"
     intervalMinutes: 1440
     maxFiles: 7
 
@@ -53,23 +53,23 @@ database:
 logging:
   file:
     enabled: true
-    level: 'debug'
-    directory: './logs'
+    level: "debug"
+    directory: "./logs"
     maxFiles: 7
   console:
     enabled: true
-    level: 'info'
+    level: "info"
   discord:
     enabled: true
-    level: 'info'
-    channelId: ''
+    level: "info"
+    channelId: ""
 
 messages:
-  verificationPanelTitle: 'Verify'
-  verificationPanelDescription: 'Click the button below to verify your student identity.'
-  verificationPanelButtonLabel: '✅ Verify account'
-  verificationClosedMessage: 'Verification is currently closed by the server administrator.'
-  verificationSuccessTitle: 'Verification Complete'
-  verificationAlreadyVerifiedTitle: 'Already Verified'
-  verificationRestoredTitle: 'Account Restored'
-  verificationErrorTitle: 'Verification Failed'
+  verificationPanelTitle: "Verify"
+  verificationPanelDescription: "Click the button below to verify your student identity."
+  verificationPanelButtonLabel: "✅ Verify account"
+  verificationClosedMessage: "Verification is currently closed by the server administrator."
+  verificationSuccessTitle: "Verification Complete"
+  verificationAlreadyVerifiedTitle: "Already Verified"
+  verificationRestoredTitle: "Account Restored"
+  verificationErrorTitle: "Verification Failed"

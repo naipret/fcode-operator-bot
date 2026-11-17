@@ -1,9 +1,9 @@
 ---
 name: Feature Request
 about: Propose a new capability or configuration improvement
-title: 'feat: '
+title: "feat: "
 labels: enhancement
-assignees: ''
+assignees: ""
 ---
 
 ## Objective
