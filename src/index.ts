@@ -167,50 +167,12 @@ async function bootstrap(): Promise<void> {
   const studentView = new StudentCommandView(activeConfig, studentController, resourceResolver);
   const roundView = new RoundCommandView(roundController, resourceResolver);
 
-  let syncTimer: NodeJS.Timeout | null = null;
   let backupTimer: NodeJS.Timeout | null = null;
-  let isSyncInProgress = false;
 
-  const scheduleBackgroundTasks = (guild: Guild, config: AppConfig): void => {
-    if (syncTimer !== null) {
-      clearInterval(syncTimer);
-      syncTimer = null;
-    }
+  const scheduleBackgroundTasks = (config: AppConfig): void => {
     if (backupTimer !== null) {
       clearInterval(backupTimer);
       backupTimer = null;
-    }
-
-    if (config.database.sync.enabled) {
-      const intervalMs = config.database.sync.intervalMinutes * 60 * 1000;
-      syncTimer = setInterval(() => {
-        if (isSyncInProgress) {
-          return;
-        }
-        isSyncInProgress = true;
-        void studentController
-          .syncStudentsToDiscord(guild)
-          .then((result) => {
-            if (result.updatedCount > 0 || result.failedMembers.length > 0) {
-              Logger.info('AutoSync', 'Reconciled database changes to Discord', {
-                updatedCount: result.updatedCount,
-                skippedCount: result.skippedCount,
-                failedCount: result.failedMembers.length,
-              });
-            } else {
-              Logger.debug('AutoSync', 'Database and Discord are in sync', {
-                checkedCount: result.skippedCount,
-              });
-            }
-          })
-          .catch((error: unknown) => {
-            Logger.error('AutoSync', 'Periodic sync failed', error);
-          })
-          .finally(() => {
-            isSyncInProgress = false;
-          });
-      }, intervalMs);
-      syncTimer.unref();
     }
 
     if (config.database.backup.enabled) {
@@ -230,8 +192,6 @@ async function bootstrap(): Promise<void> {
       backupTimer.unref();
     }
   };
-
-  let activeGuild: Guild | null = null;
 
   const reloadRuntimeConfig = (guild: Guild): ReloadOutcome => {
     let candidateConfig: AppConfig;
@@ -266,9 +226,9 @@ async function bootstrap(): Promise<void> {
     studentView.updateConfig(candidateConfig);
     systemView.updateConfig(candidateConfig);
     Logger.configure(candidateConfig.logging);
-    scheduleBackgroundTasks(guild, candidateConfig);
+    scheduleBackgroundTasks(candidateConfig);
 
-    const dbNotice =
+    const databaseNotice =
       previousDbPath !== nextDbPath
         ? `\n\nNote: Database path changed (\`${previousDbPath}\` -> \`${nextDbPath}\`). Restart the bot to switch SQLite files.`
         : '';
@@ -276,7 +236,7 @@ async function bootstrap(): Promise<void> {
     return {
       success: true,
       title: 'Configuration Reloaded',
-      description: `Validated and applied \`${environment.CONFIG_PATH}\` with zero downtime.${dbNotice}`,
+      description: `Validated and applied \`${environment.CONFIG_PATH}\` with zero downtime.${databaseNotice}`,
     };
   };
 
@@ -306,8 +266,6 @@ async function bootstrap(): Promise<void> {
         process.exit(1);
       }
 
-      activeGuild = guild;
-
       await Promise.all([
         guild.roles.fetch(),
         guild.channels.fetch(),
@@ -336,7 +294,7 @@ async function bootstrap(): Promise<void> {
         failedCount: syncResult.failedMembers.length,
       });
 
-      scheduleBackgroundTasks(guild, activeConfig);
+      scheduleBackgroundTasks(activeConfig);
 
       await registerGuildCommands(
         environment.DISCORD_APPLICATION_TOKEN,
@@ -371,14 +329,8 @@ async function bootstrap(): Promise<void> {
 
   const shutdown = (signal: string): void => {
     Logger.info('Shutdown', `Received ${signal}. Closing Discord client and SQLite connection.`);
-    if (syncTimer !== null) {
-      clearInterval(syncTimer);
-    }
     if (backupTimer !== null) {
       clearInterval(backupTimer);
-    }
-    if (activeGuild) {
-      activeGuild = null;
     }
     void client.destroy();
     databaseClient.close();

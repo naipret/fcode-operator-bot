@@ -39,16 +39,8 @@ permissions:
     round2: ''
     round3: ''
 
-# ------------------------------------------------------------------------------
-# - sync.enabled: Setting this to false does NOT disable normal
-#                 sync (startup sync, /verify, /student, /round,
-#                 guildMemberUpdate, and manual /system sync still run).
-# ------------------------------------------------------------------------------
 database:
   directory: './data'
-  sync:
-    enabled: false
-    intervalMinutes: 5
   backup:
     enabled: true
     directory: './data/backups'

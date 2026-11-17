@@ -9,8 +9,6 @@ import {
   environmentSchema,
 } from './ConfigSchema.js';
 
-let cachedConfig: AppConfig | null = null;
-
 /**
  * Formats Zod validation issues into an itemized multi-line report.
  *
@@ -49,21 +47,7 @@ function loadAppConfig(configPath?: string): AppConfig {
     );
   }
 
-  cachedConfig = validationResult.data;
   return validationResult.data;
-}
-
-/**
- * Returns the previously loaded AppConfig or loads it from disk on first call.
- *
- * @returns the validated AppConfig instance
- * @throws Error if loading from disk fails
- */
-function getAppConfig(): AppConfig {
-  if (cachedConfig !== null) {
-    return cachedConfig;
-  }
-  return loadAppConfig();
 }
 
 /**
@@ -108,7 +92,6 @@ function resolveDatabasePath(appConfig: AppConfig): string {
  */
 export const ConfigLoader = {
   loadAppConfig,
-  getAppConfig,
   loadEnvironment,
   resolveDatabasePath,
 } as const;

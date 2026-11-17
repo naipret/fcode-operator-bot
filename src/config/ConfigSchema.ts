@@ -15,23 +15,44 @@ const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
  * Zod schema validating the root config.yaml structure.
  */
 export const appConfigSchema = z.object({
-  bot: z.object({
-    clubCohortPrefix: z.string().trim().min(1).max(8),
-    maxNicknameLength: z.number().int().min(16).max(32),
-    allowedCohorts: z.array(z.string().regex(/^\d{2}$/)).min(1),
-    allowedStudentIdPrefixes: z
-      .array(
-        z
-          .string()
-          .trim()
-          .toUpperCase()
-          .regex(/^[A-Z]{2}$/),
-      )
-      .min(1),
-    studentIdRegex: z.string().min(1),
-    fullNameRegex: z.string().min(1),
-    nicknameTemplate: z.string().includes('{prefix}').includes('{name}').includes('{studentId}'),
-  }),
+  bot: z
+    .object({
+      clubCohortPrefix: z.string().trim().min(1).max(8),
+      maxNicknameLength: z.number().int().min(16).max(32),
+      allowedCohorts: z.array(z.string().regex(/^\d{2}$/)).min(1),
+      allowedStudentIdPrefixes: z
+        .array(
+          z
+            .string()
+            .trim()
+            .toUpperCase()
+            .regex(/^[A-Z]{2}$/),
+        )
+        .min(1),
+      studentIdRegex: z.string().min(1),
+      fullNameRegex: z.string().min(1),
+      nicknameTemplate: z.string().includes('{prefix}').includes('{name}').includes('{studentId}'),
+    })
+    .superRefine((botConfig, ctx) => {
+      try {
+        new RegExp(botConfig.studentIdRegex);
+      } catch {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['studentIdRegex'],
+          message: 'bot.studentIdRegex must be a valid regular expression.',
+        });
+      }
+      try {
+        new RegExp(botConfig.fullNameRegex, 'u');
+      } catch {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fullNameRegex'],
+          message: 'bot.fullNameRegex must be a valid Unicode regular expression.',
+        });
+      }
+    }),
   verification: z.object({
     enabledByDefault: z.boolean(),
     defaultRound: z.enum(['none', 'round-1', 'round-2', 'round-3']),
@@ -48,10 +69,6 @@ export const appConfigSchema = z.object({
   }),
   database: z.object({
     directory: z.string().trim().min(1),
-    sync: z.object({
-      enabled: z.boolean(),
-      intervalMinutes: z.number().int().min(1),
-    }),
     backup: z.object({
       enabled: z.boolean(),
       directory: z.string().trim().min(1),
