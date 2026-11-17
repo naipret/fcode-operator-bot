@@ -7,22 +7,25 @@ import {
   MessageFlags,
   REST,
   Routes,
-} from 'discord.js';
-import { createDiscordClient } from './client.js';
-import { ConfigLoader } from './config/ConfigLoader.js';
-import type { AppConfig, EnvironmentConfig } from './config/ConfigSchema.js';
-import { RoundController } from './controller/RoundController.js';
-import { StudentController } from './controller/StudentController.js';
-import { VerificationController } from './controller/VerificationController.js';
-import { DatabaseClient } from './repository/DatabaseClient.js';
-import { StudentRepository } from './repository/StudentRepository.js';
-import { GuildResourceResolver } from './util/GuildResourceResolver.js';
-import { Logger } from './util/Logger.js';
-import { EmbedFactory } from './view/EmbedFactory.js';
-import { RoundCommandView } from './view/RoundCommandView.js';
-import { StudentCommandView } from './view/StudentCommandView.js';
-import { type ReloadOutcome, SystemCommandView } from './view/SystemCommandView.js';
-import { VerifyCommandView } from './view/VerifyCommandView.js';
+} from "discord.js";
+import { createDiscordClient } from "./client.js";
+import { ConfigLoader } from "./config/ConfigLoader.js";
+import type { AppConfig, EnvironmentConfig } from "./config/ConfigSchema.js";
+import { RoundController } from "./controller/RoundController.js";
+import { StudentController } from "./controller/StudentController.js";
+import { VerificationController } from "./controller/VerificationController.js";
+import { DatabaseClient } from "./repository/DatabaseClient.js";
+import { StudentRepository } from "./repository/StudentRepository.js";
+import { GuildResourceResolver } from "./util/GuildResourceResolver.js";
+import { Logger } from "./util/Logger.js";
+import { EmbedFactory } from "./view/EmbedFactory.js";
+import { RoundCommandView } from "./view/RoundCommandView.js";
+import { StudentCommandView } from "./view/StudentCommandView.js";
+import {
+  type ReloadOutcome,
+  SystemCommandView,
+} from "./view/SystemCommandView.js";
+import { VerifyCommandView } from "./view/VerifyCommandView.js";
 
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 const SHUTDOWN_POLL_INTERVAL_MS = 50;
@@ -59,11 +62,14 @@ async function registerGuildCommands(
   guildId: string,
   commandPayloads: unknown[],
 ): Promise<void> {
-  const rest = new REST({ version: '10' }).setToken(token);
+  const rest = new REST({ version: "10" }).setToken(token);
   await rest.put(Routes.applicationGuildCommands(applicationId, guildId), {
     body: commandPayloads,
   });
-  Logger.info('Bootstrap', `Registered ${commandPayloads.length} guild slash commands.`);
+  Logger.info(
+    "Bootstrap",
+    `Registered ${String(commandPayloads.length)} guild slash commands.`,
+  );
 }
 
 /**
@@ -84,16 +90,16 @@ async function dispatchInteractionRoute(
 ): Promise<void> {
   if (interaction.isChatInputCommand()) {
     switch (interaction.commandName) {
-      case 'verify':
+      case "verify":
         await verifyView.handleSlashCommand(interaction);
         return;
-      case 'student':
+      case "student":
         await studentView.handleSlashCommand(interaction);
         return;
-      case 'round':
+      case "round":
         await roundView.handleSlashCommand(interaction);
         return;
-      case 'system':
+      case "system":
         await systemView.handleSlashCommand(interaction);
         return;
     }
@@ -118,7 +124,10 @@ async function dispatchInteractionRoute(
     return;
   }
 
-  if (interaction.isUserSelectMenu() && roundView.ownsCustomId(interaction.customId)) {
+  if (
+    interaction.isUserSelectMenu() &&
+    roundView.ownsCustomId(interaction.customId)
+  ) {
     await roundView.handleUserSelectMenu(interaction);
   }
 }
@@ -140,20 +149,32 @@ async function dispatchInteraction(
   systemView: SystemCommandView,
 ): Promise<void> {
   try {
-    await dispatchInteractionRoute(interaction, verifyView, studentView, roundView, systemView);
+    await dispatchInteractionRoute(
+      interaction,
+      verifyView,
+      studentView,
+      roundView,
+      systemView,
+    );
   } catch (error) {
-    Logger.error('InteractionDispatcher', 'Unhandled error while processing interaction', error);
+    Logger.error(
+      "InteractionDispatcher",
+      "Unhandled error while processing interaction",
+      error,
+    );
     if (!interaction.isRepliable()) {
       return;
     }
 
     const errorEmbed = EmbedFactory.buildErrorEmbed(
-      'Unexpected System Error',
-      'An unexpected error occurred while processing your request. Please try again or contact a moderator.',
+      "Unexpected System Error",
+      "An unexpected error occurred while processing your request. Please try again or contact a moderator.",
     );
 
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ embeds: [errorEmbed], components: [] }).catch(() => undefined);
+      await interaction
+        .editReply({ embeds: [errorEmbed], components: [] })
+        .catch(() => undefined);
       return;
     }
 
@@ -195,9 +216,9 @@ function scheduleBackupTask(
         config.database.backup.maxFiles,
         config.bot.clubCohortPrefix,
       );
-      Logger.info('AutoBackup', `Created SQLite backup at ${backupPath}`);
+      Logger.info("AutoBackup", `Created SQLite backup at ${backupPath}`);
     } catch (error) {
-      Logger.error('AutoBackup', 'Scheduled SQLite backup failed', error);
+      Logger.error("AutoBackup", "Scheduled SQLite backup failed", error);
     }
   }, intervalMs);
   timer.unref();
@@ -211,14 +232,19 @@ function scheduleBackupTask(
  * @param guild the active Discord guild
  * @returns a structured ReloadOutcome describing success or rejection reason
  */
-function applyRuntimeConfigReload(context: RuntimeContext, guild: Guild): ReloadOutcome {
+function applyRuntimeConfigReload(
+  context: RuntimeContext,
+  guild: Guild,
+): ReloadOutcome {
   let candidateConfig: AppConfig;
   try {
-    candidateConfig = ConfigLoader.loadAppConfig(context.environment.CONFIG_PATH);
+    candidateConfig = ConfigLoader.loadAppConfig(
+      context.environment.CONFIG_PATH,
+    );
   } catch (error) {
     return {
       success: false,
-      title: 'Config Reload Failed',
+      title: "Config Reload Failed",
       description: `Kept previous running configuration.\n\n\`\`\`\n${error instanceof Error ? error.message : String(error)}\n\`\`\``,
     };
   }
@@ -228,7 +254,7 @@ function applyRuntimeConfigReload(context: RuntimeContext, guild: Guild): Reload
   if (previousDbPath !== nextDbPath) {
     return {
       success: false,
-      title: 'Config Reload Rejected',
+      title: "Config Reload Rejected",
       description: `Kept previous running configuration because the SQLite database path changed (\`${previousDbPath}\` -> \`${nextDbPath}\`). Restart the bot to switch SQLite files.`,
     };
   }
@@ -238,8 +264,8 @@ function applyRuntimeConfigReload(context: RuntimeContext, guild: Guild): Reload
   if (missingResources.length > 0) {
     return {
       success: false,
-      title: 'Config Reload Failed',
-      description: `Kept previous running configuration because configured Discord IDs were not found:\n${missingResources.map((item) => `• \`${item}\``).join('\n')}`,
+      title: "Config Reload Failed",
+      description: `Kept previous running configuration because configured Discord IDs were not found:\n${missingResources.map((item) => `• \`${item}\``).join("\n")}`,
     };
   }
 
@@ -259,7 +285,7 @@ function applyRuntimeConfigReload(context: RuntimeContext, guild: Guild): Reload
 
   return {
     success: true,
-    title: 'Configuration Reloaded',
+    title: "Configuration Reloaded",
     description: `Validated and applied \`${context.environment.CONFIG_PATH}\` with zero downtime.`,
   };
 }
@@ -275,14 +301,14 @@ async function initializeGuildSession(
   context: RuntimeContext,
 ): Promise<void> {
   Logger.attachDiscordClient(readyClient);
-  Logger.info('Bootstrap', `Logged in as ${readyClient.user.tag}.`);
+  Logger.info("Bootstrap", `Logged in as ${readyClient.user.tag}.`);
 
   const guild = await readyClient.guilds
     .fetch(context.environment.DISCORD_SERVER_ID)
     .catch(() => null);
   if (!guild) {
     Logger.error(
-      'Bootstrap',
+      "Bootstrap",
       `Configured DISCORD_SERVER_ID (${context.environment.DISCORD_SERVER_ID}) was not found.`,
     );
     await Logger.shutdown();
@@ -294,16 +320,20 @@ async function initializeGuildSession(
   await Promise.all([
     guild.roles.fetch(),
     guild.channels.fetch(),
-    guild.members.fetch().catch((error) => {
-      Logger.warn('Bootstrap', `Failed prefetching guild members: ${String(error)}`);
+    guild.members.fetch().catch((error: unknown) => {
+      Logger.warn(
+        "Bootstrap",
+        `Failed prefetching guild members: ${String(error)}`,
+      );
     }),
   ]);
 
-  const missingResources = context.resourceResolver.validateConfiguredResources(guild);
+  const missingResources =
+    context.resourceResolver.validateConfiguredResources(guild);
   if (missingResources.length > 0) {
     Logger.error(
-      'Bootstrap',
-      `Configured Discord IDs missing in guild "${guild.name}":\n${missingResources.map((item) => `  - ${item}`).join('\n')}`,
+      "Bootstrap",
+      `Configured Discord IDs missing in guild "${guild.name}":\n${missingResources.map((item) => `  - ${item}`).join("\n")}`,
     );
     await Logger.shutdown();
     await readyClient.destroy();
@@ -311,9 +341,13 @@ async function initializeGuildSession(
     process.exit(1);
   }
 
-  Logger.info('Bootstrap', `Cached ${guild.members.cache.size} members for ${guild.name}.`);
-  const syncResult = await context.studentController.syncStudentsToDiscord(guild);
-  Logger.info('Bootstrap', 'Reconciled SQLite student records with Discord', {
+  Logger.info(
+    "Bootstrap",
+    `Cached ${String(guild.members.cache.size)} members for ${guild.name}.`,
+  );
+  const syncResult =
+    await context.studentController.syncStudentsToDiscord(guild);
+  Logger.info("Bootstrap", "Reconciled SQLite student records with Discord", {
     updatedCount: syncResult.updatedCount,
     skippedCount: syncResult.skippedCount,
     failedCount: syncResult.failedMembers.length,
@@ -343,10 +377,14 @@ async function initializeGuildSession(
  *
  * @param lockedDiscordIds shared Set tracking in-flight member operations
  */
-async function waitForInFlightOperations(lockedDiscordIds: Set<string>): Promise<void> {
+async function waitForInFlightOperations(
+  lockedDiscordIds: Set<string>,
+): Promise<void> {
   const deadlineMs = Date.now() + SHUTDOWN_DRAIN_TIMEOUT_MS;
   while (lockedDiscordIds.size > 0 && Date.now() < deadlineMs) {
-    await new Promise((resolve) => setTimeout(resolve, SHUTDOWN_POLL_INTERVAL_MS));
+    await new Promise((resolve) =>
+      setTimeout(resolve, SHUTDOWN_POLL_INTERVAL_MS),
+    );
   }
 }
 
@@ -357,7 +395,10 @@ async function waitForInFlightOperations(lockedDiscordIds: Set<string>): Promise
  * @param context the shared runtime container
  * @returns signal handler callback
  */
-function createShutdownHandler(client: Client, context: RuntimeContext): (signal: string) => void {
+function createShutdownHandler(
+  client: Client,
+  context: RuntimeContext,
+): (signal: string) => void {
   let isShuttingDown = false;
 
   return (signal: string): void => {
@@ -366,8 +407,11 @@ function createShutdownHandler(client: Client, context: RuntimeContext): (signal
     }
     isShuttingDown = true;
 
-    void (async () => {
-      Logger.info('Shutdown', `Received ${signal}. Draining active tasks and closing resources.`);
+    void (async (): Promise<void> => {
+      Logger.info(
+        "Shutdown",
+        `Received ${signal}. Draining active tasks and closing resources.`,
+      );
       if (context.backupTimer !== null) {
         clearInterval(context.backupTimer);
         context.backupTimer = null;
@@ -391,10 +435,12 @@ async function bootstrap(): Promise<void> {
   Logger.configure(activeConfig.logging);
 
   const activeDatabasePath = ConfigLoader.resolveDatabasePath(activeConfig);
-  Logger.info('Bootstrap', `Using SQLite database at ${activeDatabasePath}`);
+  Logger.info("Bootstrap", `Using SQLite database at ${activeDatabasePath}`);
   const databaseClient = new DatabaseClient(activeDatabasePath);
   const studentRepository = new StudentRepository(databaseClient);
-  studentRepository.seedVerificationGateDefault(activeConfig.verification.enabledByDefault);
+  studentRepository.seedVerificationGateDefault(
+    activeConfig.verification.enabledByDefault,
+  );
 
   const lockedDiscordIds = new Set<string>();
   const resourceResolver = new GuildResourceResolver(activeConfig);
@@ -416,8 +462,16 @@ async function bootstrap(): Promise<void> {
     lockedDiscordIds,
   );
 
-  const verifyView = new VerifyCommandView(activeConfig, studentRepository, verificationController);
-  const studentView = new StudentCommandView(activeConfig, studentController, resourceResolver);
+  const verifyView = new VerifyCommandView(
+    activeConfig,
+    studentRepository,
+    verificationController,
+  );
+  const studentView = new StudentCommandView(
+    activeConfig,
+    studentController,
+    resourceResolver,
+  );
   const roundView = new RoundCommandView(roundController, resourceResolver);
 
   const context: RuntimeContext = {
@@ -446,13 +500,15 @@ async function bootstrap(): Promise<void> {
   const client = createDiscordClient();
 
   client.once(Events.ClientReady, (readyClient) => {
-    void initializeGuildSession(readyClient, context).catch(async (error) => {
-      Logger.error('Bootstrap', 'Startup initialization failed', error);
-      await Logger.shutdown();
-      await client.destroy();
-      databaseClient.close();
-      process.exit(1);
-    });
+    void initializeGuildSession(readyClient, context).catch(
+      async (error: unknown) => {
+        Logger.error("Bootstrap", "Startup initialization failed", error);
+        await Logger.shutdown();
+        await client.destroy();
+        databaseClient.close();
+        process.exit(1);
+      },
+    );
   });
 
   client.on(Events.GuildMemberUpdate, (_oldMember, newMember) => {
@@ -464,17 +520,27 @@ async function bootstrap(): Promise<void> {
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    void dispatchInteraction(interaction, verifyView, studentView, roundView, context.systemView);
+    void dispatchInteraction(
+      interaction,
+      verifyView,
+      studentView,
+      roundView,
+      context.systemView,
+    );
   });
 
   const handleShutdown = createShutdownHandler(client, context);
-  process.once('SIGINT', () => handleShutdown('SIGINT'));
-  process.once('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.once("SIGINT", () => {
+    handleShutdown("SIGINT");
+  });
+  process.once("SIGTERM", () => {
+    handleShutdown("SIGTERM");
+  });
 
   await client.login(environment.DISCORD_APPLICATION_TOKEN);
 }
 
-bootstrap().catch((error) => {
-  Logger.error('Bootstrap', 'Fatal startup failure', error);
+bootstrap().catch((error: unknown) => {
+  Logger.error("Bootstrap", "Fatal startup failure", error);
   process.exit(1);
 });

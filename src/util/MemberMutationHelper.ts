@@ -1,14 +1,15 @@
-import { DiscordAPIError, type GuildMember } from 'discord.js';
-import type { AppConfig } from '../config/ConfigSchema.js';
-import type { Student } from '../model/Student.js';
-import { Logger } from './Logger.js';
+import { DiscordAPIError, type GuildMember } from "discord.js";
+import type { AppConfig } from "../config/ConfigSchema.js";
+import type { Student } from "../model/Student.js";
+import { Logger } from "./Logger.js";
 
 const DISCORD_MISSING_PERMISSIONS_CODE = 50013;
 
 /**
  * Result returned by runWithMemberLock indicating whether the member lock was acquired.
  */
-export type MemberLockResult<T> = { acquired: false } | { acquired: true; value: T };
+export type MemberLockResult<T> =
+  { acquired: false } | { acquired: true; value: T };
 
 /**
  * Executes an asynchronous member operation while holding a per-user mutex lock.
@@ -42,7 +43,9 @@ async function runWithMemberLock<T>(
  * @param permissions the configured permission role IDs
  * @returns a Set of managed recruitment role Snowflake IDs
  */
-function getManagedRoleIdsSet(permissions: AppConfig['permissions']): Set<string> {
+function getManagedRoleIdsSet(
+  permissions: AppConfig["permissions"],
+): Set<string> {
   return new Set<string>([
     permissions.verifiedRoleId,
     permissions.roundRoleIds.round1,
@@ -58,7 +61,10 @@ function getManagedRoleIdsSet(permissions: AppConfig['permissions']): Set<string
  * @param permissions the configured permission role IDs
  * @returns array of preserved Discord role Snowflake IDs
  */
-function getPreservedRoleIds(member: GuildMember, permissions: AppConfig['permissions']): string[] {
+function getPreservedRoleIds(
+  member: GuildMember,
+  permissions: AppConfig["permissions"],
+): string[] {
   const managedIds = getManagedRoleIdsSet(permissions);
   return member.roles.cache
     .filter((role) => role.id !== member.guild.id && !managedIds.has(role.id))
@@ -76,7 +82,7 @@ function getPreservedRoleIds(member: GuildMember, permissions: AppConfig['permis
 function buildDesiredRoleIds(
   member: GuildMember,
   student: Student,
-  permissions: AppConfig['permissions'],
+  permissions: AppConfig["permissions"],
 ): string[] {
   const targetIds = new Set<string>(getPreservedRoleIds(member, permissions));
   const { verifiedRoleId, roundRoleIds } = permissions;
@@ -115,14 +121,14 @@ async function applyRolesOnlyFallback(
   try {
     await member.edit({ roles: roleIds });
     return nickname === null
-      ? 'Discord prevented clearing the nickname due to role hierarchy.'
+      ? "Discord prevented clearing the nickname due to role hierarchy."
       : `Discord prevented updating your nickname due to role hierarchy. Please set your nickname manually to \`${nickname}\`.`;
   } catch (fallbackError) {
     Logger.warn(
       contextName,
       `Fallback role edit failed with missing permissions: ${String(fallbackError)}`,
     );
-    return 'Discord prevents updating your profile due to role hierarchy. Please verify that the bot role is positioned above your roles.';
+    return "Discord prevents updating your profile due to role hierarchy. Please verify that the bot role is positioned above your roles.";
   }
 }
 
@@ -144,10 +150,13 @@ async function applyMemberNicknameAndRoles(
   if (member.id === member.guild.ownerId) {
     try {
       await member.edit({ roles: roleIds });
-      return 'Discord prevents changing the Server Owner nickname. Roles were updated; please update the nickname manually.';
+      return "Discord prevents changing the Server Owner nickname. Roles were updated; please update the nickname manually.";
     } catch (ownerError) {
-      Logger.warn(contextName, `Role update skipped for guild owner: ${String(ownerError)}`);
-      return 'Discord prevents bots from modifying the Server Owner profile. Please assign roles or nickname manually.';
+      Logger.warn(
+        contextName,
+        `Role update skipped for guild owner: ${String(ownerError)}`,
+      );
+      return "Discord prevents bots from modifying the Server Owner profile. Please assign roles or nickname manually.";
     }
   }
 
@@ -155,8 +164,16 @@ async function applyMemberNicknameAndRoles(
     await member.edit({ nick: nickname, roles: roleIds });
     return null;
   } catch (error) {
-    if (error instanceof DiscordAPIError && error.code === DISCORD_MISSING_PERMISSIONS_CODE) {
-      return await applyRolesOnlyFallback(member, nickname, roleIds, contextName);
+    if (
+      error instanceof DiscordAPIError &&
+      error.code === DISCORD_MISSING_PERMISSIONS_CODE
+    ) {
+      return await applyRolesOnlyFallback(
+        member,
+        nickname,
+        roleIds,
+        contextName,
+      );
     }
     throw error;
   }

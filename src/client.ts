@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Options } from 'discord.js';
+import { Client, GatewayIntentBits, Options } from "discord.js";
 
 /**
  * Creates a configured Discord.js client with balanced memory caches.

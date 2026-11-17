@@ -1,6 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import fs from "node:fs";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 /**
  * Manages the built-in node:sqlite connection, runtime directory creation, and schema bootstrap.
@@ -14,7 +14,7 @@ export class DatabaseClient {
    * @param databasePath filesystem path for the SQLite file or ":memory:" for isolated checks
    */
   public constructor(databasePath: string) {
-    if (databasePath !== ':memory:') {
+    if (databasePath !== ":memory:") {
       const parentDirectory = path.dirname(path.resolve(databasePath));
       if (!fs.existsSync(parentDirectory)) {
         fs.mkdirSync(parentDirectory, { recursive: true });
@@ -22,7 +22,7 @@ export class DatabaseClient {
     }
 
     this.database = new DatabaseSync(databasePath);
-    this.configurePragmas(databasePath === ':memory:');
+    this.configurePragmas(databasePath === ":memory:");
     this.initializeSchema();
     this.runSchemaMigrations();
   }
@@ -44,13 +44,13 @@ export class DatabaseClient {
    * @throws unknown rethrows any error thrown by operation after rolling back the transaction
    */
   public runInTransaction<T>(operation: () => T): T {
-    this.database.exec('BEGIN IMMEDIATE');
+    this.database.exec("BEGIN IMMEDIATE");
     try {
       const result = operation();
-      this.database.exec('COMMIT');
+      this.database.exec("COMMIT");
       return result;
     } catch (error) {
-      this.database.exec('ROLLBACK');
+      this.database.exec("ROLLBACK");
       throw error;
     }
   }
@@ -70,24 +70,33 @@ export class DatabaseClient {
    * @param cohortPrefix club cohort prefix used in backup file naming
    * @returns full path to the newly created backup file
    */
-  public createBackup(backupDirectory: string, maxFiles: number, cohortPrefix: string): string {
+  public createBackup(
+    backupDirectory: string,
+    maxFiles: number,
+    cohortPrefix: string,
+  ): string {
     const resolvedDir = path.resolve(backupDirectory);
     if (!fs.existsSync(resolvedDir)) {
       fs.mkdirSync(resolvedDir, { recursive: true });
     }
 
     const now = new Date();
-    const pad = (value: number, length = 2): string => String(value).padStart(length, '0');
-    const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${pad(now.getMilliseconds(), 3)}`;
+    const pad = (value: number, length = 2): string =>
+      String(value).padStart(length, "0");
+    const timestamp = `${String(now.getFullYear())}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${pad(now.getMilliseconds(), 3)}`;
     const filePrefix = `recruitment-${cohortPrefix.toLowerCase()}-`;
-    const backupPath = this.resolveUniqueBackupPath(resolvedDir, filePrefix, timestamp);
+    const backupPath = this.resolveUniqueBackupPath(
+      resolvedDir,
+      filePrefix,
+      timestamp,
+    );
     const escapedPath = backupPath.replaceAll("'", "''");
 
     this.database.exec(`VACUUM INTO '${escapedPath}';`);
 
     const backups = fs
       .readdirSync(resolvedDir)
-      .filter((name) => name.startsWith(filePrefix) && name.endsWith('.db'))
+      .filter((name) => name.startsWith(filePrefix) && name.endsWith(".db"))
       .sort();
 
     while (backups.length > maxFiles) {
@@ -106,11 +115,11 @@ export class DatabaseClient {
    * @param isInMemory whether the connection uses an ephemeral in-memory database
    */
   private configurePragmas(isInMemory: boolean): void {
-    this.database.exec('PRAGMA busy_timeout = 5000;');
-    this.database.exec('PRAGMA foreign_keys = ON;');
+    this.database.exec("PRAGMA busy_timeout = 5000;");
+    this.database.exec("PRAGMA foreign_keys = ON;");
     if (!isInMemory) {
-      this.database.exec('PRAGMA journal_mode = WAL;');
-      this.database.exec('PRAGMA synchronous = NORMAL;');
+      this.database.exec("PRAGMA journal_mode = WAL;");
+      this.database.exec("PRAGMA synchronous = NORMAL;");
     }
   }
 
@@ -159,10 +168,16 @@ export class DatabaseClient {
     }
 
     let suffix = 1;
-    let candidate = path.join(directory, `${filePrefix}${timestamp}-${suffix}.db`);
+    let candidate = path.join(
+      directory,
+      `${filePrefix}${timestamp}-${String(suffix)}.db`,
+    );
     while (fs.existsSync(candidate)) {
       suffix += 1;
-      candidate = path.join(directory, `${filePrefix}${timestamp}-${suffix}.db`);
+      candidate = path.join(
+        directory,
+        `${filePrefix}${timestamp}-${String(suffix)}.db`,
+      );
     }
     return candidate;
   }
@@ -171,7 +186,7 @@ export class DatabaseClient {
    * Applies forward-only SQLite schema migrations tracked via PRAGMA user_version.
    */
   private runSchemaMigrations(): void {
-    const versionRow = this.database.prepare('PRAGMA user_version').get() as
+    const versionRow = this.database.prepare("PRAGMA user_version").get() as
       { user_version: number } | undefined;
     const currentVersion = versionRow?.user_version ?? 0;
 
@@ -180,7 +195,7 @@ export class DatabaseClient {
     }
 
     this.runInTransaction(() => {
-      this.database.exec('PRAGMA user_version = 1;');
+      this.database.exec("PRAGMA user_version = 1;");
     });
   }
 }

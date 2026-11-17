@@ -1,13 +1,13 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { parse } from 'yaml';
-import type { z } from 'zod';
+import fs from "node:fs";
+import path from "node:path";
+import { parse } from "yaml";
+import type { z } from "zod";
 import {
   type AppConfig,
   type EnvironmentConfig,
   appConfigSchema,
   environmentSchema,
-} from './ConfigSchema.js';
+} from "./ConfigSchema.js";
 
 /**
  * Formats Zod validation issues into an itemized multi-line report.
@@ -15,13 +15,13 @@ import {
  * @param issues the list of Zod validation issues
  * @returns formatted multi-line error bullet list
  */
-function formatValidationIssues(issues: z.ZodIssue[]): string {
+function formatValidationIssues(issues: z.core.$ZodIssue[]): string {
   return issues
     .map((issue) => {
-      const fieldPath = issue.path.length > 0 ? issue.path.join('.') : 'root';
+      const fieldPath = issue.path.length > 0 ? issue.path.join(".") : "root";
       return `  - ${fieldPath}: ${issue.message}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 /**
@@ -32,12 +32,14 @@ function formatValidationIssues(issues: z.ZodIssue[]): string {
  * @throws Error if the YAML file does not exist or fails Zod schema validation
  */
 function loadAppConfig(configPath?: string): AppConfig {
-  const resolvedPath = path.resolve(configPath ?? process.env.CONFIG_PATH ?? './config.yaml');
+  const resolvedPath = path.resolve(
+    configPath ?? process.env.CONFIG_PATH ?? "./config.yaml",
+  );
   if (!fs.existsSync(resolvedPath)) {
     throw new Error(`Configuration file not found at path: ${resolvedPath}`);
   }
 
-  const rawContent = fs.readFileSync(resolvedPath, 'utf8');
+  const rawContent = fs.readFileSync(resolvedPath, "utf8");
   const parsedYaml: unknown = parse(rawContent);
   const validationResult = appConfigSchema.safeParse(parsedYaml);
 

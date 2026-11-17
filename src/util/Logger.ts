@@ -1,16 +1,16 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { Writable } from 'node:stream';
-import type { Client } from 'discord.js';
-import pino, { type DestinationStream, type Logger as PinoLogger } from 'pino';
-import pinoPretty from 'pino-pretty';
+import fs from "node:fs";
+import path from "node:path";
+import { Writable } from "node:stream";
+import type { Client } from "discord.js";
+import pino, { type DestinationStream, type Logger as PinoLogger } from "pino";
+import pinoPretty from "pino-pretty";
 
-import type { LoggingConfig } from '../config/ConfigSchema.js';
+import type { LoggingConfig } from "../config/ConfigSchema.js";
 
 /**
  * Log severity levels supported by the application logger.
  */
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
   debug: 10,
@@ -20,10 +20,10 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 const LEVEL_NAMES: Record<number, string> = {
-  20: 'DEBUG',
-  30: 'INFO',
-  40: 'WARN',
-  50: 'ERROR',
+  20: "DEBUG",
+  30: "INFO",
+  40: "WARN",
+  50: "ERROR",
 };
 
 let attachedDiscordClient: Client | null = null;
@@ -35,7 +35,7 @@ let attachedDiscordClient: Client | null = null;
 class DailyLogDestination extends Writable {
   private readonly directory: string;
   private readonly maxFiles: number;
-  private currentDate = '';
+  private currentDate = "";
   private fileStream: fs.WriteStream | null = null;
 
   /**
@@ -57,9 +57,9 @@ class DailyLogDestination extends Writable {
    * @returns local calendar date string
    */
   private formatLocalDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
 
@@ -100,8 +100,11 @@ class DailyLogDestination extends Writable {
 
     fs.mkdirSync(this.directory, { recursive: true });
     const filePath = path.join(this.directory, `${today}.log`);
-    fs.closeSync(fs.openSync(filePath, 'a'));
-    this.fileStream = fs.createWriteStream(filePath, { flags: 'a', encoding: 'utf8' });
+    fs.closeSync(fs.openSync(filePath, "a"));
+    this.fileStream = fs.createWriteStream(filePath, {
+      flags: "a",
+      encoding: "utf8",
+    });
     this.currentDate = today;
     this.pruneOldLogFiles();
     return this.fileStream;
@@ -122,12 +125,18 @@ class DailyLogDestination extends Writable {
     try {
       const stream = this.ensureCurrentStream();
       if (!stream.write(chunk)) {
-        stream.once('drain', () => callback());
+        stream.once("drain", () => {
+          callback();
+        });
         return;
       }
       callback();
     } catch (streamError) {
-      callback(streamError instanceof Error ? streamError : new Error(String(streamError)));
+      callback(
+        streamError instanceof Error
+          ? streamError
+          : new Error(String(streamError)),
+      );
     }
   }
 
@@ -141,7 +150,9 @@ class DailyLogDestination extends Writable {
     const stream = this.fileStream;
     this.fileStream = null;
     await new Promise<void>((resolve) => {
-      stream.end(() => resolve());
+      stream.end(() => {
+        resolve();
+      });
     });
   }
 
@@ -156,7 +167,9 @@ class DailyLogDestination extends Writable {
     callback: (error?: Error | null) => void,
   ): void {
     if (this.fileStream !== null) {
-      this.fileStream.end(() => callback(streamError));
+      this.fileStream.end(() => {
+        callback(streamError);
+      });
       this.fileStream = null;
       return;
     }
@@ -195,26 +208,30 @@ class DiscordLogDestination extends Writable {
   private formatLogLine(rawLine: string): string {
     try {
       const parsed = JSON.parse(rawLine) as Record<string, unknown>;
-      const levelNum = typeof parsed.level === 'number' ? parsed.level : 30;
-      const levelLabel = LEVEL_NAMES[levelNum] ?? 'INFO';
-      const context = typeof parsed.context === 'string' ? parsed.context : 'System';
-      const msg = typeof parsed.msg === 'string' ? parsed.msg : '';
-      const timeMs = typeof parsed.time === 'number' ? parsed.time : Date.now();
-      const timestamp = new Date(timeMs).toISOString().replace('T', ' ').slice(0, 19);
+      const levelNum = typeof parsed.level === "number" ? parsed.level : 30;
+      const levelLabel = LEVEL_NAMES[levelNum] ?? "INFO";
+      const context =
+        typeof parsed.context === "string" ? parsed.context : "System";
+      const msg = typeof parsed.msg === "string" ? parsed.msg : "";
+      const timeMs = typeof parsed.time === "number" ? parsed.time : Date.now();
+      const timestamp = new Date(timeMs)
+        .toISOString()
+        .replace("T", " ")
+        .slice(0, 19);
 
       const extraEntries = Object.entries(parsed).filter(
         ([key]) =>
-          key !== 'level' &&
-          key !== 'time' &&
-          key !== 'pid' &&
-          key !== 'hostname' &&
-          key !== 'context' &&
-          key !== 'msg',
+          key !== "level" &&
+          key !== "time" &&
+          key !== "pid" &&
+          key !== "hostname" &&
+          key !== "context" &&
+          key !== "msg",
       );
       const extraSuffix =
         extraEntries.length > 0
-          ? ` | ${extraEntries.map(([key, val]) => `${key}=${typeof val === 'string' ? val : JSON.stringify(val)}`).join(' ')}`
-          : '';
+          ? ` | ${extraEntries.map(([key, val]) => `${key}=${typeof val === "string" ? val : JSON.stringify(val)}`).join(" ")}`
+          : "";
 
       return `[${timestamp}] [${levelLabel}] [${context}] ${msg}${extraSuffix}`;
     } catch {
@@ -227,28 +244,38 @@ class DiscordLogDestination extends Writable {
    */
   private async flush(): Promise<void> {
     this.flushTimer = null;
-    if (!attachedDiscordClient || !attachedDiscordClient.isReady() || this.buffer.length === 0) {
+    if (
+      !attachedDiscordClient ||
+      !attachedDiscordClient.isReady() ||
+      this.buffer.length === 0
+    ) {
       return;
     }
 
     const lines = this.buffer.splice(0, this.buffer.length);
-    const channel = await attachedDiscordClient.channels.fetch(this.channelId).catch(() => null);
-    if (!channel || !channel.isTextBased() || !('send' in channel)) {
+    const channel = await attachedDiscordClient.channels
+      .fetch(this.channelId)
+      .catch(() => null);
+    if (!channel || !channel.isTextBased() || !("send" in channel)) {
       return;
     }
 
-    let currentBlock = '';
+    let currentBlock = "";
     const blocks: string[] = [];
 
     for (const line of lines) {
       const safeLine = line.slice(0, DiscordLogDestination.MAX_CHUNK_LENGTH);
-      if (currentBlock.length + safeLine.length + 1 > DiscordLogDestination.MAX_CHUNK_LENGTH) {
+      if (
+        currentBlock.length + safeLine.length + 1 >
+        DiscordLogDestination.MAX_CHUNK_LENGTH
+      ) {
         if (currentBlock.length > 0) {
           blocks.push(currentBlock);
         }
         currentBlock = safeLine;
       } else {
-        currentBlock = currentBlock.length > 0 ? `${currentBlock}\n${safeLine}` : safeLine;
+        currentBlock =
+          currentBlock.length > 0 ? `${currentBlock}\n${safeLine}` : safeLine;
       }
     }
     if (currentBlock.length > 0) {
@@ -256,9 +283,13 @@ class DiscordLogDestination extends Writable {
     }
 
     for (const block of blocks) {
-      await channel.send({ content: `\`\`\`\n${block}\n\`\`\`` }).catch((sendError: unknown) => {
-        process.stderr.write(`DiscordLogDestination send failed: ${String(sendError)}\n`);
-      });
+      await channel
+        .send({ content: `\`\`\`\n${block}\n\`\`\`` })
+        .catch((sendError: unknown) => {
+          process.stderr.write(
+            `DiscordLogDestination send failed: ${String(sendError)}\n`,
+          );
+        });
     }
   }
 
@@ -285,13 +316,16 @@ class DiscordLogDestination extends Writable {
     _encoding: BufferEncoding,
     callback: (error?: Error | null) => void,
   ): void {
-    const text = chunk.toString('utf8').trim();
+    const text = chunk.toString("utf8").trim();
     if (text.length > 0) {
-      for (const line of text.split('\n')) {
+      for (const line of text.split("\n")) {
         this.buffer.push(this.formatLogLine(line));
       }
       if (this.buffer.length > DiscordLogDestination.MAX_PENDING_LINES) {
-        this.buffer.splice(0, this.buffer.length - DiscordLogDestination.MAX_PENDING_LINES);
+        this.buffer.splice(
+          0,
+          this.buffer.length - DiscordLogDestination.MAX_PENDING_LINES,
+        );
       }
       if (this.flushTimer === null) {
         this.flushTimer = setTimeout(() => {
@@ -329,11 +363,11 @@ class DiscordLogDestination extends Writable {
 function createStartupLogger(): PinoLogger {
   const prettyStream = pinoPretty({
     colorize: true,
-    translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
-    ignore: 'pid,hostname',
+    translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
+    ignore: "pid,hostname",
   }) as unknown as DestinationStream;
 
-  return pino({ level: 'info' }, prettyStream);
+  return pino({ level: "info" }, prettyStream);
 }
 
 let pinoInstance: PinoLogger = createStartupLogger();
@@ -386,12 +420,15 @@ async function shutdown(): Promise<void> {
  */
 function configure(config: LoggingConfig): void {
   releaseActiveDestinations();
-  const streams: Array<{ level: LogLevel; stream: DestinationStream }> = [];
+  const streams: { level: LogLevel; stream: DestinationStream }[] = [];
   const enabledLevels: LogLevel[] = [];
 
   if (config.file.enabled) {
     enabledLevels.push(config.file.level);
-    activeDailyDestination = new DailyLogDestination(config.file.directory, config.file.maxFiles);
+    activeDailyDestination = new DailyLogDestination(
+      config.file.directory,
+      config.file.maxFiles,
+    );
     streams.push({
       level: config.file.level,
       stream: activeDailyDestination,
@@ -402,15 +439,17 @@ function configure(config: LoggingConfig): void {
     enabledLevels.push(config.console.level);
     const prettyStream = pinoPretty({
       colorize: true,
-      translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
-      ignore: 'pid,hostname',
+      translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
+      ignore: "pid,hostname",
     }) as unknown as DestinationStream;
     streams.push({ level: config.console.level, stream: prettyStream });
   }
 
   if (config.discord.enabled && config.discord.channelId.trim().length > 0) {
     enabledLevels.push(config.discord.level);
-    activeDiscordDestination = new DiscordLogDestination(config.discord.channelId);
+    activeDiscordDestination = new DiscordLogDestination(
+      config.discord.channelId,
+    );
     streams.push({
       level: config.discord.level,
       stream: activeDiscordDestination,
@@ -436,7 +475,11 @@ function configure(config: LoggingConfig): void {
  * @param message the human-readable log statement
  * @param meta optional structured metadata fields
  */
-function debug(context: string, message: string, meta?: Record<string, unknown>): void {
+function debug(
+  context: string,
+  message: string,
+  meta?: Record<string, unknown>,
+): void {
   pinoInstance.debug({ context, ...(meta ?? {}) }, message);
 }
 
@@ -447,7 +490,11 @@ function debug(context: string, message: string, meta?: Record<string, unknown>)
  * @param message the human-readable log statement
  * @param meta optional structured metadata fields
  */
-function info(context: string, message: string, meta?: Record<string, unknown>): void {
+function info(
+  context: string,
+  message: string,
+  meta?: Record<string, unknown>,
+): void {
   pinoInstance.info({ context, ...(meta ?? {}) }, message);
 }
 
@@ -458,7 +505,11 @@ function info(context: string, message: string, meta?: Record<string, unknown>):
  * @param message the warning description
  * @param meta optional structured metadata fields
  */
-function warn(context: string, message: string, meta?: Record<string, unknown>): void {
+function warn(
+  context: string,
+  message: string,
+  meta?: Record<string, unknown>,
+): void {
   pinoInstance.warn({ context, ...(meta ?? {}) }, message);
 }
 
@@ -474,15 +525,18 @@ function error(context: string, message: string, errorValue?: unknown): void {
     pinoInstance.error({ context, err: errorValue }, message);
     return;
   }
-  if (typeof errorValue === 'object' && errorValue !== null) {
-    pinoInstance.error({ context, ...(errorValue as Record<string, unknown>) }, message);
+  if (typeof errorValue === "object" && errorValue !== null) {
+    pinoInstance.error(
+      { context, ...(errorValue as Record<string, unknown>) },
+      message,
+    );
     return;
   }
   if (errorValue !== undefined) {
     const detail =
-      typeof errorValue === 'string' ||
-      typeof errorValue === 'number' ||
-      typeof errorValue === 'boolean'
+      typeof errorValue === "string" ||
+      typeof errorValue === "number" ||
+      typeof errorValue === "boolean"
         ? String(errorValue)
         : JSON.stringify(errorValue);
     pinoInstance.error({ context, detail }, message);

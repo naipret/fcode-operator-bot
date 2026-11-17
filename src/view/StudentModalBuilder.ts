@@ -1,12 +1,12 @@
 import {
   type APIInteractionGuildMember,
-  ActionRowBuilder,
   type Guild,
   GuildMember,
+  LabelBuilder,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-} from 'discord.js';
+} from "discord.js";
 
 /**
  * Resolves a GuildMember from an interaction payload or guild cache before falling back to REST fetch.
@@ -45,28 +45,31 @@ export function buildStudentInputModal(
   latestCohort: string,
 ): ModalBuilder {
   const fullNameInput = new TextInputBuilder()
-    .setCustomId('full-name-input')
-    .setLabel('Full Name')
-    .setPlaceholder('Example: Nguyễn Văn A')
+    .setCustomId("full-name-input")
+    .setPlaceholder("Example: Nguyễn Văn A")
     .setStyle(TextInputStyle.Short)
     .setMinLength(2)
     .setMaxLength(60)
     .setRequired(true);
 
   const studentIdInput = new TextInputBuilder()
-    .setCustomId('student-id-input')
-    .setLabel('Student ID (8 characters)')
+    .setCustomId("student-id-input")
     .setPlaceholder(`Example: SE${latestCohort}0001`)
     .setStyle(TextInputStyle.Short)
     .setMinLength(8)
     .setMaxLength(8)
     .setRequired(true);
 
+  const fullNameLabel = new LabelBuilder()
+    .setLabel("Full Name")
+    .setTextInputComponent(fullNameInput);
+
+  const studentIdLabel = new LabelBuilder()
+    .setLabel("Student ID (8 characters)")
+    .setTextInputComponent(studentIdInput);
+
   return new ModalBuilder()
     .setCustomId(customId)
     .setTitle(title)
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(fullNameInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(studentIdInput),
-    );
+    .addLabelComponents(fullNameLabel, studentIdLabel);
 }

@@ -6,16 +6,16 @@ import {
   type ChatInputCommandInteraction,
   type Guild,
   SlashCommandBuilder,
-} from 'discord.js';
-import type { AppConfig } from '../config/ConfigSchema.js';
-import type { StudentController } from '../controller/StudentController.js';
-import type { StudentRepository } from '../repository/StudentRepository.js';
-import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
-import { InputValidator } from '../util/InputValidator.js';
-import { Logger } from '../util/Logger.js';
-import { EmbedFactory } from './EmbedFactory.js';
-import { resolveInteractionMember } from './StudentModalBuilder.js';
-import { VERIFY_PANEL_BUTTON_ID } from './VerifyCommandView.js';
+} from "discord.js";
+import type { AppConfig } from "../config/ConfigSchema.js";
+import type { StudentController } from "../controller/StudentController.js";
+import type { StudentRepository } from "../repository/StudentRepository.js";
+import type { GuildResourceResolver } from "../util/GuildResourceResolver.js";
+import { InputValidator } from "../util/InputValidator.js";
+import { Logger } from "../util/Logger.js";
+import { EmbedFactory } from "./EmbedFactory.js";
+import { resolveInteractionMember } from "./StudentModalBuilder.js";
+import { VERIFY_PANEL_BUTTON_ID } from "./VerifyCommandView.js";
 
 /**
  * Outcome returned by transactional config hot-reload callbacks.
@@ -75,43 +75,55 @@ export class SystemCommandView {
    */
   public getCommandDefinition(): SlashCommandBuilder {
     return new SlashCommandBuilder()
-      .setName('system')
+      .setName("system")
       .setDescription(
-        'Manage bot verification gate, database sync, and configuration (owner only).',
+        "Manage bot verification gate, database sync, and configuration (owner only).",
       )
       .addSubcommand((subcommand) =>
         subcommand
-          .setName('verify')
-          .setDescription('Enable/disable verification and optionally post or update the panel.')
+          .setName("verify")
+          .setDescription(
+            "Enable/disable verification and optionally post or update the panel.",
+          )
           .addBooleanOption((option) =>
             option
-              .setName('enabled')
-              .setDescription('Set to true to allow new verifications, or false to close.')
+              .setName("enabled")
+              .setDescription(
+                "Set to true to allow new verifications, or false to close.",
+              )
               .setRequired(true),
           )
           .addChannelOption((option) =>
             option
-              .setName('panel-channel')
-              .setDescription('Optional text channel to post or update the verification panel.')
+              .setName("panel-channel")
+              .setDescription(
+                "Optional text channel to post or update the verification panel.",
+              )
               .addChannelTypes(ChannelType.GuildText)
               .setRequired(false),
           ),
       )
       .addSubcommand((subcommand) =>
         subcommand
-          .setName('sync')
-          .setDescription('Synchronize SQLite student records (nicknames and roles) to Discord.')
+          .setName("sync")
+          .setDescription(
+            "Synchronize SQLite student records (nicknames and roles) to Discord.",
+          )
           .addStringOption((option) =>
             option
-              .setName('target')
-              .setDescription('Optional @user or Student ID (omit to sync all verified students).')
+              .setName("target")
+              .setDescription(
+                "Optional @user or Student ID (omit to sync all verified students).",
+              )
               .setRequired(false),
           ),
       )
       .addSubcommand((subcommand) =>
         subcommand
-          .setName('reload')
-          .setDescription('Validate and hot-reload config.yaml without restarting the bot.'),
+          .setName("reload")
+          .setDescription(
+            "Validate and hot-reload config.yaml without restarting the bot.",
+          ),
       ) as SlashCommandBuilder;
   }
 
@@ -120,13 +132,15 @@ export class SystemCommandView {
    *
    * @param interaction the slash command interaction
    */
-  public async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  public async handleSlashCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
     if (!interaction.guild) {
       await interaction.reply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
-            'Server Required',
-            'This command can only be executed inside a Discord server.',
+            "Server Required",
+            "This command can only be executed inside a Discord server.",
           ),
         ],
       });
@@ -139,12 +153,17 @@ export class SystemCommandView {
       interaction.member,
       interaction.user.id,
     );
-    if (!this.resourceResolver.isOwnerOrHasOwnerRole(interaction.guild, callerMember)) {
+    if (
+      !this.resourceResolver.isOwnerOrHasOwnerRole(
+        interaction.guild,
+        callerMember,
+      )
+    ) {
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
-            'Owner Authorization Required',
-            'Only the Server Owner or holders of the configured owner role can execute `/system` commands.',
+            "Owner Authorization Required",
+            "Only the Server Owner or holders of the configured owner role can execute `/system` commands.",
           ),
         ],
       });
@@ -152,18 +171,21 @@ export class SystemCommandView {
     }
 
     const subcommand = interaction.options.getSubcommand();
-    if (subcommand === 'verify') {
+    if (subcommand === "verify") {
       await this.handleVerifySubcommand(interaction);
       return;
     }
 
-    if (subcommand === 'sync') {
-      const target = interaction.options.getString('target');
-      const outcome = await this.studentController.syncStudentsToDiscord(interaction.guild, target);
+    if (subcommand === "sync") {
+      const target = interaction.options.getString("target");
+      const outcome = await this.studentController.syncStudentsToDiscord(
+        interaction.guild,
+        target,
+      );
       if (outcome.success) {
-        Logger.info('SystemCommandView', 'Executed manual DB-to-Discord sync', {
+        Logger.info("SystemCommandView", "Executed manual DB-to-Discord sync", {
           callerId: interaction.user.id,
-          target: target ?? 'ALL',
+          target: target ?? "ALL",
           updatedCount: outcome.updatedCount,
           skippedCount: outcome.skippedCount,
           failedCount: outcome.failedMembers.length,
@@ -179,16 +201,20 @@ export class SystemCommandView {
       return;
     }
 
-    if (subcommand === 'reload') {
+    if (subcommand === "reload") {
       const outcome = this.onReload(interaction.guild);
       if (outcome.success) {
-        Logger.info('SystemCommandView', 'Hot-reloaded config.yaml', {
+        Logger.info("SystemCommandView", "Hot-reloaded config.yaml", {
           callerId: interaction.user.id,
         });
       } else {
-        Logger.warn('SystemCommandView', 'Rejected invalid config.yaml during hot-reload', {
-          callerId: interaction.user.id,
-        });
+        Logger.warn(
+          "SystemCommandView",
+          "Rejected invalid config.yaml during hot-reload",
+          {
+            callerId: interaction.user.id,
+          },
+        );
       }
       await interaction.editReply({
         embeds: [
@@ -205,13 +231,16 @@ export class SystemCommandView {
    *
    * @param interaction the slash command interaction
    */
-  private async handleVerifySubcommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    const enabled = interaction.options.getBoolean('enabled', true);
-    const panelChannel = interaction.options.getChannel<ChannelType.GuildText>('panel-channel');
+  private async handleVerifySubcommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    const enabled = interaction.options.getBoolean("enabled", true);
+    const panelChannel =
+      interaction.options.getChannel<ChannelType.GuildText>("panel-channel");
 
     this.studentRepository.setVerificationEnabled(enabled);
 
-    let panelNote = '';
+    let panelNote = "";
     if (panelChannel) {
       const description = InputValidator.interpolateConfigText(
         this.appConfig.messages.verificationPanelDescription,
@@ -231,29 +260,40 @@ export class SystemCommandView {
       const recentMessages = await panelChannel.messages.fetch({ limit: 20 });
       const existingPanel = recentMessages.find(
         (message) =>
-          message.author.id === interaction.client.user.id && message.components.length > 0,
+          message.author.id === interaction.client.user.id &&
+          message.components.length > 0,
       );
 
       if (existingPanel) {
-        await existingPanel.edit({ embeds: [panelEmbed], components: [panelRow] });
+        await existingPanel.edit({
+          embeds: [panelEmbed],
+          components: [panelRow],
+        });
         panelNote = `\nVerification panel updated in <#${panelChannel.id}>.`;
       } else {
-        await panelChannel.send({ embeds: [panelEmbed], components: [panelRow] });
+        await panelChannel.send({
+          embeds: [panelEmbed],
+          components: [panelRow],
+        });
         panelNote = `\nVerification panel posted in <#${panelChannel.id}>.`;
       }
     }
 
-    Logger.info('SystemCommandView', 'Updated verification gate configuration', {
-      callerId: interaction.user.id,
-      enabled,
-      panelChannelId: panelChannel?.id ?? null,
-    });
+    Logger.info(
+      "SystemCommandView",
+      "Updated verification gate configuration",
+      {
+        callerId: interaction.user.id,
+        enabled,
+        panelChannelId: panelChannel?.id ?? null,
+      },
+    );
 
     await interaction.editReply({
       embeds: [
         EmbedFactory.buildSuccessEmbed(
-          'Verification Gate Updated',
-          `Candidate verification is now \`${enabled ? 'OPEN' : 'CLOSED'}\`.${panelNote}`,
+          "Verification Gate Updated",
+          `Candidate verification is now \`${enabled ? "OPEN" : "CLOSED"}\`.${panelNote}`,
         ),
       ],
     });

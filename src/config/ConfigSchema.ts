@@ -1,15 +1,18 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 /**
  * Zod schema validating a required Discord Snowflake ID string.
  */
 const snowflakeSchema = z
-  .string({ error: 'Required ID is missing.' })
+  .string({ error: "Required ID is missing." })
   .trim()
-  .min(1, 'Required ID is empty; fill in this field.')
-  .regex(/^\d{17,20}$/, 'Must be a valid Discord Snowflake ID (17 to 20 digits).');
+  .min(1, "Required ID is empty; fill in this field.")
+  .regex(
+    /^\d{17,20}$/,
+    "Must be a valid Discord Snowflake ID (17 to 20 digits).",
+  );
 
-const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
+const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 
 /**
  * Zod schema validating the root config.yaml structure.
@@ -31,31 +34,36 @@ export const appConfigSchema = z.object({
         .min(1),
       studentIdRegex: z.string().min(1),
       fullNameRegex: z.string().min(1),
-      nicknameTemplate: z.string().includes('{prefix}').includes('{name}').includes('{studentId}'),
+      nicknameTemplate: z
+        .string()
+        .includes("{prefix}")
+        .includes("{name}")
+        .includes("{studentId}"),
     })
     .superRefine((botConfig, ctx) => {
       try {
         new RegExp(botConfig.studentIdRegex);
       } catch {
         ctx.addIssue({
-          code: 'custom',
-          path: ['studentIdRegex'],
-          message: 'bot.studentIdRegex must be a valid regular expression.',
+          code: "custom",
+          path: ["studentIdRegex"],
+          message: "bot.studentIdRegex must be a valid regular expression.",
         });
       }
       try {
-        new RegExp(botConfig.fullNameRegex, 'u');
+        new RegExp(botConfig.fullNameRegex, "u");
       } catch {
         ctx.addIssue({
-          code: 'custom',
-          path: ['fullNameRegex'],
-          message: 'bot.fullNameRegex must be a valid Unicode regular expression.',
+          code: "custom",
+          path: ["fullNameRegex"],
+          message:
+            "bot.fullNameRegex must be a valid Unicode regular expression.",
         });
       }
     }),
   verification: z.object({
     enabledByDefault: z.boolean(),
-    defaultRound: z.enum(['none', 'round-1', 'round-2', 'round-3']),
+    defaultRound: z.enum(["none", "round-1", "round-2", "round-3"]),
   }),
   permissions: z.object({
     ownerRoleId: snowflakeSchema,
@@ -95,12 +103,15 @@ export const appConfigSchema = z.object({
       }),
     })
     .superRefine((logging, ctx) => {
-      if (logging.discord.enabled && !/^\d{17,20}$/.test(logging.discord.channelId)) {
+      if (
+        logging.discord.enabled &&
+        !/^\d{17,20}$/.test(logging.discord.channelId)
+      ) {
         ctx.addIssue({
-          code: 'custom',
-          path: ['discord', 'channelId'],
+          code: "custom",
+          path: ["discord", "channelId"],
           message:
-            'logging.discord.channelId must be a valid Discord Snowflake ID (17 to 20 digits) when Discord logging is enabled.',
+            "logging.discord.channelId must be a valid Discord Snowflake ID (17 to 20 digits) when Discord logging is enabled.",
         });
       }
     }),
@@ -121,12 +132,12 @@ export const appConfigSchema = z.object({
  */
 export const environmentSchema = z.object({
   DISCORD_APPLICATION_TOKEN: z
-    .string({ error: 'DISCORD_APPLICATION_TOKEN is missing.' })
+    .string({ error: "DISCORD_APPLICATION_TOKEN is missing." })
     .trim()
-    .min(10, 'DISCORD_APPLICATION_TOKEN is empty or invalid.'),
+    .min(10, "DISCORD_APPLICATION_TOKEN is empty or invalid."),
   DISCORD_APPLICATION_ID: snowflakeSchema,
   DISCORD_SERVER_ID: snowflakeSchema,
-  CONFIG_PATH: z.string().trim().min(1).default('./config.yaml'),
+  CONFIG_PATH: z.string().trim().min(1).default("./config.yaml"),
 });
 
 /**
@@ -137,12 +148,12 @@ export type AppConfig = z.infer<typeof appConfigSchema>;
 /**
  * Strongly typed bot naming and validation configuration subset.
  */
-export type BotConfig = AppConfig['bot'];
+export type BotConfig = AppConfig["bot"];
 
 /**
  * Strongly typed logging configuration subset.
  */
-export type LoggingConfig = AppConfig['logging'];
+export type LoggingConfig = AppConfig["logging"];
 
 /**
  * Strongly typed runtime environment configuration derived from environmentSchema.

@@ -1,7 +1,7 @@
 /**
  * Validated recruitment round identifier matching the three configured round roles.
  */
-export type RoundKey = 'round-1' | 'round-2' | 'round-3';
+export type RoundKey = "round-1" | "round-2" | "round-3";
 
 /**
  * Domain entity representing a verified student persisted in the SQLite students table.
@@ -20,14 +20,14 @@ export interface Student {
  * Result status emitted by verification and rejoin restoration workflows.
  */
 export type VerificationOutcomeStatus =
-  | 'VERIFIED'
-  | 'RESTORED'
-  | 'ALREADY_ACTIVE'
-  | 'GATE_CLOSED'
-  | 'INVALID_INPUT'
-  | 'NICKNAME_TOO_LONG'
-  | 'CONFLICT'
-  | 'LOCKED';
+  | "VERIFIED"
+  | "RESTORED"
+  | "ALREADY_ACTIVE"
+  | "GATE_CLOSED"
+  | "INVALID_INPUT"
+  | "NICKNAME_TOO_LONG"
+  | "CONFLICT"
+  | "LOCKED";
 
 /**
  * Structured outcome returned by VerificationController after processing an action.

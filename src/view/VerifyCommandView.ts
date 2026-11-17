@@ -1,32 +1,36 @@
 import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
+  type EmbedBuilder,
   type GuildMember,
   MessageFlags,
   type ModalSubmitInteraction,
   SlashCommandBuilder,
-} from 'discord.js';
-import type { AppConfig } from '../config/ConfigSchema.js';
-import type { VerificationController } from '../controller/VerificationController.js';
-import type { VerificationOutcome } from '../model/Student.js';
-import type { StudentRepository } from '../repository/StudentRepository.js';
-import { EmbedFactory } from './EmbedFactory.js';
-import { buildStudentInputModal, resolveInteractionMember } from './StudentModalBuilder.js';
+} from "discord.js";
+import type { AppConfig } from "../config/ConfigSchema.js";
+import type { VerificationController } from "../controller/VerificationController.js";
+import type { VerificationOutcome } from "../model/Student.js";
+import type { StudentRepository } from "../repository/StudentRepository.js";
+import { EmbedFactory } from "./EmbedFactory.js";
+import {
+  buildStudentInputModal,
+  resolveInteractionMember,
+} from "./StudentModalBuilder.js";
 
 /**
  * Custom identifier shared between the persistent panel button and runtime handler.
  */
-export const VERIFY_PANEL_BUTTON_ID = 'fcode-verify-open-button';
+export const VERIFY_PANEL_BUTTON_ID = "fcode-verify-open-button";
 
 /**
  * Custom identifier for the modal opened from the public /verify slash command.
  */
-const VERIFY_SLASH_MODAL_ID = 'fcode-verify-slash-modal';
+const VERIFY_SLASH_MODAL_ID = "fcode-verify-slash-modal";
 
 /**
  * Custom identifier for the modal opened from the ephemeral [Verify Account] button.
  */
-const VERIFY_BUTTON_MODAL_ID = 'fcode-verify-button-modal';
+const VERIFY_BUTTON_MODAL_ID = "fcode-verify-button-modal";
 
 /**
  * Presents the /verify command, persistent button handler, and 1-step verification modal.
@@ -68,20 +72,22 @@ export class VerifyCommandView {
    * @returns a SlashCommandBuilder defining /verify and its optional inline fields
    */
   public getCommandDefinition(): SlashCommandBuilder {
-    const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
+    const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? "22";
     return new SlashCommandBuilder()
-      .setName('verify')
-      .setDescription('Verify your student identity.')
+      .setName("verify")
+      .setDescription("Verify your student identity.")
       .addStringOption((option) =>
         option
-          .setName('full-name')
-          .setDescription('Your full name (for example, Nguyễn Văn A).')
+          .setName("full-name")
+          .setDescription("Your full name (for example, Nguyễn Văn A).")
           .setRequired(false),
       )
       .addStringOption((option) =>
         option
-          .setName('student-id')
-          .setDescription(`Your FPT University student ID (for example, SE${latestCohort}0001).`)
+          .setName("student-id")
+          .setDescription(
+            `Your FPT University student ID (for example, SE${latestCohort}0001).`,
+          )
           .setRequired(false),
       ) as SlashCommandBuilder;
   }
@@ -91,22 +97,26 @@ export class VerifyCommandView {
    *
    * @param interaction the slash command interaction
    */
-  public async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  public async handleSlashCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
     if (!interaction.guild || !interaction.member) {
       await interaction.reply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
-            'Server Required',
-            'This command can only be executed inside a Discord server.',
+            "Server Required",
+            "This command can only be executed inside a Discord server.",
           ),
         ],
       });
       return;
     }
 
-    const rawFullName = interaction.options.getString('full-name');
-    const rawStudentId = interaction.options.getString('student-id');
-    const providedCount = [rawFullName, rawStudentId].filter((value) => value !== null).length;
+    const rawFullName = interaction.options.getString("full-name");
+    const rawStudentId = interaction.options.getString("student-id");
+    const providedCount = [rawFullName, rawStudentId].filter(
+      (value) => value !== null,
+    ).length;
 
     if (providedCount === 0) {
       const member = await resolveInteractionMember(
@@ -122,8 +132,8 @@ export class VerifyCommandView {
       await interaction.reply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
-            'Incomplete Parameters',
-            'Provide both `full-name` and `student-id` together, or invoke `/verify` with no options to open the verification form.',
+            "Incomplete Parameters",
+            "Provide both `full-name` and `student-id` together, or invoke `/verify` with no options to open the verification form.",
           ),
         ],
       });
@@ -149,7 +159,9 @@ export class VerifyCommandView {
    *
    * @param interaction the Discord button interaction
    */
-  public async handleVerifyButton(interaction: ButtonInteraction): Promise<void> {
+  public async handleVerifyButton(
+    interaction: ButtonInteraction,
+  ): Promise<void> {
     if (!interaction.guild) {
       return;
     }
@@ -180,7 +192,9 @@ export class VerifyCommandView {
    *
    * @param interaction the modal submit interaction
    */
-  public async handleModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+  public async handleModalSubmit(
+    interaction: ModalSubmitInteraction,
+  ): Promise<void> {
     if (!interaction.guild) {
       return;
     }
@@ -189,10 +203,13 @@ export class VerifyCommandView {
       return;
     }
 
-    await interaction.deferReply(isEphemeral ? { flags: MessageFlags.Ephemeral } : undefined);
+    await interaction.deferReply(
+      isEphemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+    );
 
-    const rawFullName = interaction.fields.getTextInputValue('full-name-input');
-    const rawStudentId = interaction.fields.getTextInputValue('student-id-input');
+    const rawFullName = interaction.fields.getTextInputValue("full-name-input");
+    const rawStudentId =
+      interaction.fields.getTextInputValue("student-id-input");
     const member = await resolveInteractionMember(
       interaction.guild,
       interaction.member,
@@ -221,8 +238,11 @@ export class VerifyCommandView {
   ): Promise<void> {
     const existingRecord = this.studentRepository.findByDiscordId(member.id);
     if (existingRecord?.isVerified) {
-      await interaction.deferReply(isEphemeral ? { flags: MessageFlags.Ephemeral } : undefined);
-      const outcome = await this.verificationController.checkAndRestoreIfVerified(member);
+      await interaction.deferReply(
+        isEphemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+      );
+      const outcome =
+        await this.verificationController.checkAndRestoreIfVerified(member);
       if (outcome) {
         await interaction.editReply({
           embeds: [this.mapOutcomeToEmbed(outcome)],
@@ -233,21 +253,26 @@ export class VerifyCommandView {
 
     if (!this.verificationController.isVerificationGateEnabled()) {
       const warningEmbed = EmbedFactory.buildWarningEmbed(
-        'Verification Closed',
+        "Verification Closed",
         this.appConfig.messages.verificationClosedMessage,
       );
       if (isEphemeral) {
-        await interaction.reply({ flags: MessageFlags.Ephemeral, embeds: [warningEmbed] });
+        await interaction.reply({
+          flags: MessageFlags.Ephemeral,
+          embeds: [warningEmbed],
+        });
       } else {
         await interaction.reply({ embeds: [warningEmbed] });
       }
       return;
     }
 
-    const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
-    const modalId = isEphemeral ? VERIFY_BUTTON_MODAL_ID : VERIFY_SLASH_MODAL_ID;
+    const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? "22";
+    const modalId = isEphemeral
+      ? VERIFY_BUTTON_MODAL_ID
+      : VERIFY_SLASH_MODAL_ID;
     await interaction.showModal(
-      buildStudentInputModal(modalId, 'Student Verification', latestCohort),
+      buildStudentInputModal(modalId, "Student Verification", latestCohort),
     );
   }
 
@@ -257,25 +282,25 @@ export class VerifyCommandView {
    * @param outcome the controller outcome
    * @returns a Discord EmbedBuilder
    */
-  private mapOutcomeToEmbed(outcome: VerificationOutcome) {
+  private mapOutcomeToEmbed(outcome: VerificationOutcome): EmbedBuilder {
     const fullDescription = outcome.nicknameHierarchyWarning
       ? `${outcome.description}\n\nHierarchy Notice: ${outcome.nicknameHierarchyWarning}`
       : outcome.description;
 
     switch (outcome.status) {
-      case 'VERIFIED':
-      case 'RESTORED':
+      case "VERIFIED":
+      case "RESTORED":
         return outcome.nicknameHierarchyWarning
           ? EmbedFactory.buildWarningEmbed(outcome.title, fullDescription)
           : EmbedFactory.buildSuccessEmbed(outcome.title, fullDescription);
-      case 'ALREADY_ACTIVE':
+      case "ALREADY_ACTIVE":
         return EmbedFactory.buildInfoEmbed(outcome.title, fullDescription);
-      case 'GATE_CLOSED':
-      case 'LOCKED':
+      case "GATE_CLOSED":
+      case "LOCKED":
         return EmbedFactory.buildWarningEmbed(outcome.title, fullDescription);
-      case 'INVALID_INPUT':
-      case 'NICKNAME_TOO_LONG':
-      case 'CONFLICT':
+      case "INVALID_INPUT":
+      case "NICKNAME_TOO_LONG":
+      case "CONFLICT":
         return EmbedFactory.buildErrorEmbed(outcome.title, fullDescription);
     }
   }

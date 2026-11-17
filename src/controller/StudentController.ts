@@ -1,11 +1,11 @@
-import { DiscordAPIError, type Guild } from 'discord.js';
-import type { AppConfig } from '../config/ConfigSchema.js';
-import type { Student } from '../model/Student.js';
-import type { StudentRepository } from '../repository/StudentRepository.js';
-import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
-import { InputValidator } from '../util/InputValidator.js';
-import { Logger } from '../util/Logger.js';
-import { MemberMutationHelper } from '../util/MemberMutationHelper.js';
+import { DiscordAPIError, type Guild } from "discord.js";
+import type { AppConfig } from "../config/ConfigSchema.js";
+import type { Student } from "../model/Student.js";
+import type { StudentRepository } from "../repository/StudentRepository.js";
+import type { GuildResourceResolver } from "../util/GuildResourceResolver.js";
+import { InputValidator } from "../util/InputValidator.js";
+import { Logger } from "../util/Logger.js";
+import { MemberMutationHelper } from "../util/MemberMutationHelper.js";
 
 /**
  * Result returned by manual student lookup, register, update, and reset commands.
@@ -121,8 +121,9 @@ export class StudentController {
     if (!student) {
       return {
         success: false,
-        title: 'Student Not Found',
-        description: 'No student record matched the provided user or Student ID.',
+        title: "Student Not Found",
+        description:
+          "No student record matched the provided user or Student ID.",
       };
     }
 
@@ -140,9 +141,9 @@ export class StudentController {
         `Discord User: <@${student.discordId}> (\`${student.discordId}\`)`,
         `Full Name: \`${student.fullName}\``,
         `Computed Nickname: \`${nickname}\``,
-        `Verified: \`${student.isVerified ? 'Yes' : 'No'}\``,
+        `Verified: \`${student.isVerified ? "Yes" : "No"}\``,
         `Active Rounds: ${rounds}`,
-      ].join('\n'),
+      ].join("\n"),
       student,
     };
   }
@@ -185,8 +186,9 @@ export class StudentController {
     if (!existingStudent) {
       return {
         success: false,
-        title: 'Student Not Found',
-        description: 'No student record matched the provided user or Student ID.',
+        title: "Student Not Found",
+        description:
+          "No student record matched the provided user or Student ID.",
       };
     }
 
@@ -205,13 +207,17 @@ export class StudentController {
    * @param target unified target string (@mention, Discord ID, or Student ID)
    * @returns a StudentActionOutcome summarizing the reset
    */
-  public async resetStudent(guild: Guild, target: string): Promise<StudentActionOutcome> {
+  public async resetStudent(
+    guild: Guild,
+    target: string,
+  ): Promise<StudentActionOutcome> {
     const existingStudent = this.resolveStudentByTarget(target);
     if (!existingStudent) {
       return {
         success: false,
-        title: 'Student Not Found',
-        description: 'No student record matched the provided user or Student ID.',
+        title: "Student Not Found",
+        description:
+          "No student record matched the provided user or Student ID.",
       };
     }
 
@@ -238,8 +244,9 @@ export class StudentController {
     if (!targets) {
       return {
         success: false,
-        title: 'Student Not Found',
-        description: 'No verified student record matched the provided user or Student ID.',
+        title: "Student Not Found",
+        description:
+          "No verified student record matched the provided user or Student ID.",
         updatedCount: 0,
         skippedCount: 0,
         failedMembers: [],
@@ -252,9 +259,9 @@ export class StudentController {
 
     for (const student of targets) {
       const outcome = await this.syncSingleStudent(guild, student);
-      if (outcome === 'UPDATED') {
+      if (outcome === "UPDATED") {
         updatedCount += 1;
-      } else if (outcome === 'SKIPPED') {
+      } else if (outcome === "SKIPPED") {
         skippedCount += 1;
       } else {
         failedMembers.push(outcome);
@@ -263,13 +270,13 @@ export class StudentController {
 
     const failedSummary =
       failedMembers.length > 0
-        ? `\nFailed (${failedMembers.length}): \`${failedMembers.join(', ')}\``
-        : '';
+        ? `\nFailed (${String(failedMembers.length)}): \`${failedMembers.join(", ")}\``
+        : "";
 
     return {
       success: true,
-      title: 'Database Sync Complete',
-      description: `Reconciled \`${targets.length}\` verified student(s) from SQLite to Discord.\n\nUpdated: \`${updatedCount}\`\nAlready In Sync: \`${skippedCount}\`${failedSummary}`,
+      title: "Database Sync Complete",
+      description: `Reconciled \`${String(targets.length)}\` verified student(s) from SQLite to Discord.\n\nUpdated: \`${String(updatedCount)}\`\nAlready In Sync: \`${String(skippedCount)}\`${failedSummary}`,
       updatedCount,
       skippedCount,
       failedMembers,
@@ -297,22 +304,27 @@ export class StudentController {
     if (!validation.valid) {
       return {
         success: false,
-        title: 'Invalid Student Information',
+        title: "Invalid Student Information",
         description: validation.error,
       };
     }
 
-    const existingById = this.studentRepository.findByStudentId(validation.studentId);
+    const existingById = this.studentRepository.findByStudentId(
+      validation.studentId,
+    );
     if (existingById && existingById.discordId !== member.id) {
       return {
         success: false,
-        title: 'Duplicate Student ID',
+        title: "Duplicate Student ID",
         description: `Student ID \`${validation.studentId}\` is already assigned to <@${existingById.discordId}>. Reset that record first before reassigning it.`,
       };
     }
 
     const existingByDiscord = this.studentRepository.findByDiscordId(member.id);
-    if (existingByDiscord && existingByDiscord.studentId !== validation.studentId) {
+    if (
+      existingByDiscord &&
+      existingByDiscord.studentId !== validation.studentId
+    ) {
       this.studentRepository.deleteByDiscordId(member.id);
     }
 
@@ -327,19 +339,20 @@ export class StudentController {
       student,
       this.appConfig.permissions,
     );
-    const hierarchyWarning = await MemberMutationHelper.applyMemberNicknameAndRoles(
-      member,
-      validation.nickname,
-      roleIds,
-      'StudentController',
-    );
+    const hierarchyWarning =
+      await MemberMutationHelper.applyMemberNicknameAndRoles(
+        member,
+        validation.nickname,
+        roleIds,
+        "StudentController",
+      );
 
     this.studentRepository.upsertStudent(student);
-    const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : '';
+    const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : "";
 
     return {
       success: true,
-      title: 'Student Registered Manually',
+      title: "Student Registered Manually",
       description: `Updated <@${member.id}> successfully.\n\nFull Name: \`${student.fullName}\`\nNickname: \`${validation.nickname}\`\nStudent ID: \`${student.studentId}\`${warningNote}`,
       student,
     };
@@ -369,16 +382,18 @@ export class StudentController {
     if (!validation.valid) {
       return {
         success: false,
-        title: 'Invalid Student Information',
+        title: "Invalid Student Information",
         description: validation.error,
       };
     }
 
-    const existingById = this.studentRepository.findByStudentId(validation.studentId);
+    const existingById = this.studentRepository.findByStudentId(
+      validation.studentId,
+    );
     if (existingById && existingById.discordId !== existingStudent.discordId) {
       return {
         success: false,
-        title: 'Duplicate Student ID',
+        title: "Duplicate Student ID",
         description: `Student ID \`${validation.studentId}\` is already assigned to <@${existingById.discordId}>. Reset that record first before reassigning it.`,
       };
     }
@@ -407,16 +422,16 @@ export class StudentController {
     const activeRounds = this.formatActiveRounds(updatedStudent);
     return {
       success: true,
-      title: 'Student Updated',
+      title: "Student Updated",
       description: [
         `Updated <@${updatedStudent.discordId}> successfully.`,
-        '',
+        "",
         `Full Name: \`${updatedStudent.fullName}\``,
         `Nickname: \`${validation.nickname}\``,
         `Student ID: \`${updatedStudent.studentId}\``,
         `Active Rounds: ${activeRounds}`,
-        ...(discordNote ? ['', `Note: ${discordNote}`] : []),
-      ].join('\n'),
+        ...(discordNote ? ["", `Note: ${discordNote}`] : []),
+      ].join("\n"),
       student: updatedStudent,
     };
   }
@@ -438,7 +453,7 @@ export class StudentController {
       guild.members.cache.get(student.discordId) ??
       (await guild.members.fetch(student.discordId).catch(() => null));
     if (!member) {
-      return 'Member is not currently in the server; changes are saved in SQLite and will apply on rejoin or sync.';
+      return "Member is not currently in the server; changes are saved in SQLite and will apply on rejoin or sync.";
     }
 
     const roleIds = MemberMutationHelper.buildDesiredRoleIds(
@@ -450,7 +465,7 @@ export class StudentController {
       member,
       nickname,
       roleIds,
-      'StudentController',
+      "StudentController",
     );
   }
 
@@ -465,20 +480,23 @@ export class StudentController {
     guild: Guild,
     existingStudent: Student,
   ): Promise<StudentActionOutcome> {
-    const member = await guild.members.fetch(existingStudent.discordId).catch(() => null);
-    let discordCleanupNote = '';
+    const member = await guild.members
+      .fetch(existingStudent.discordId)
+      .catch(() => null);
+    let discordCleanupNote = "";
 
     if (member) {
       const preservedRoles = MemberMutationHelper.getPreservedRoleIds(
         member,
         this.appConfig.permissions,
       );
-      const hierarchyWarning = await MemberMutationHelper.applyMemberNicknameAndRoles(
-        member,
-        null,
-        preservedRoles,
-        'StudentController',
-      );
+      const hierarchyWarning =
+        await MemberMutationHelper.applyMemberNicknameAndRoles(
+          member,
+          null,
+          preservedRoles,
+          "StudentController",
+        );
       if (hierarchyWarning) {
         discordCleanupNote = `\n\nNote: ${hierarchyWarning}`;
       }
@@ -488,7 +506,7 @@ export class StudentController {
 
     return {
       success: true,
-      title: 'Student Reset Complete',
+      title: "Student Reset Complete",
       description: `Removed database record \`${existingStudent.studentId}\` (<@${existingStudent.discordId}>). The user may now re-verify from scratch.${discordCleanupNote}`,
     };
   }
@@ -502,7 +520,7 @@ export class StudentController {
   private resolveSyncTargets(target?: string | null): Student[] | null {
     if (target && target.trim().length > 0) {
       const matched = this.resolveStudentByTarget(target);
-      return matched && matched.isVerified ? [matched] : null;
+      return matched?.isVerified ? [matched] : null;
     }
     return this.studentRepository.listAllVerifiedStudents();
   }
@@ -514,13 +532,18 @@ export class StudentController {
    * @param student the student record to reconcile
    * @returns 'UPDATED', 'SKIPPED', or a descriptive failure label
    */
-  private async syncSingleStudent(guild: Guild, student: Student): Promise<string> {
+  private async syncSingleStudent(
+    guild: Guild,
+    student: Student,
+  ): Promise<string> {
     const lockResult = await MemberMutationHelper.runWithMemberLock(
       this.lockedDiscordIds,
       student.discordId,
       () => this.reconcileStudentMember(guild, student),
     );
-    return lockResult.acquired ? lockResult.value : `${student.studentId} (locked)`;
+    return lockResult.acquired
+      ? lockResult.value
+      : `${student.studentId} (locked)`;
   }
 
   /**
@@ -530,7 +553,10 @@ export class StudentController {
    * @param student the student record to apply
    * @returns 'UPDATED', 'SKIPPED', or a descriptive failure label
    */
-  private async reconcileStudentMember(guild: Guild, student: Student): Promise<string> {
+  private async reconcileStudentMember(
+    guild: Guild,
+    student: Student,
+  ): Promise<string> {
     const member =
       guild.members.cache.get(student.discordId) ??
       (await guild.members.fetch(student.discordId).catch(() => null));
@@ -549,15 +575,18 @@ export class StudentController {
       this.appConfig.permissions,
     );
     const currentRoleIds = new Set(
-      member.roles.cache.filter((role) => role.id !== guild.id).map((role) => role.id),
+      member.roles.cache
+        .filter((role) => role.id !== guild.id)
+        .map((role) => role.id),
     );
     const rolesMatch =
       desiredRoleIds.length === currentRoleIds.size &&
       desiredRoleIds.every((roleId) => currentRoleIds.has(roleId));
-    const nicknameMatches = member.nickname === expectedNickname || member.id === guild.ownerId;
+    const nicknameMatches =
+      member.nickname === expectedNickname || member.id === guild.ownerId;
 
     if (rolesMatch && nicknameMatches) {
-      return 'SKIPPED';
+      return "SKIPPED";
     }
 
     try {
@@ -565,9 +594,15 @@ export class StudentController {
         ...(member.id === guild.ownerId ? {} : { nick: expectedNickname }),
         roles: desiredRoleIds,
       });
-      return 'UPDATED';
+      return "UPDATED";
     } catch (error) {
-      return await this.handleSyncEditError(member, student, desiredRoleIds, rolesMatch, error);
+      return await this.handleSyncEditError(
+        member,
+        student,
+        desiredRoleIds,
+        rolesMatch,
+        error,
+      );
     }
   }
 
@@ -595,10 +630,10 @@ export class StudentController {
     ) {
       try {
         await member.edit({ roles: desiredRoleIds });
-        return 'UPDATED';
+        return "UPDATED";
       } catch (fallbackError) {
         Logger.warn(
-          'StudentController',
+          "StudentController",
           `Fallback role sync failed for ${student.studentId}: ${String(fallbackError)}`,
         );
         return student.studentId;
@@ -606,7 +641,7 @@ export class StudentController {
     }
 
     Logger.warn(
-      'StudentController',
+      "StudentController",
       `Failed syncing ${student.studentId} to Discord: ${String(error)}`,
     );
     return student.studentId;
@@ -635,11 +670,15 @@ export class StudentController {
       isVerified: true,
       isRound1: existingByDiscord
         ? existingByDiscord.isRound1
-        : defaultRound === 'round-1' || defaultRound === 'round-2' || defaultRound === 'round-3',
+        : defaultRound === "round-1" ||
+          defaultRound === "round-2" ||
+          defaultRound === "round-3",
       isRound2: existingByDiscord
         ? existingByDiscord.isRound2
-        : defaultRound === 'round-2' || defaultRound === 'round-3',
-      isRound3: existingByDiscord ? existingByDiscord.isRound3 : defaultRound === 'round-3',
+        : defaultRound === "round-2" || defaultRound === "round-3",
+      isRound3: existingByDiscord
+        ? existingByDiscord.isRound3
+        : defaultRound === "round-3",
     };
   }
 
@@ -651,12 +690,18 @@ export class StudentController {
    */
   private formatActiveRounds(student: Student): string {
     const rounds = [
-      student.isRound1 ? `<@&${this.resourceResolver.getRoundRoleId('round-1')}>` : null,
-      student.isRound2 ? `<@&${this.resourceResolver.getRoundRoleId('round-2')}>` : null,
-      student.isRound3 ? `<@&${this.resourceResolver.getRoundRoleId('round-3')}>` : null,
+      student.isRound1
+        ? `<@&${this.resourceResolver.getRoundRoleId("round-1")}>`
+        : null,
+      student.isRound2
+        ? `<@&${this.resourceResolver.getRoundRoleId("round-2")}>`
+        : null,
+      student.isRound3
+        ? `<@&${this.resourceResolver.getRoundRoleId("round-3")}>`
+        : null,
     ].filter((entry): entry is string => entry !== null);
 
-    return rounds.length > 0 ? rounds.join(', ') : 'None';
+    return rounds.length > 0 ? rounds.join(", ") : "None";
   }
 
   /**
@@ -667,8 +712,9 @@ export class StudentController {
   private buildLockedOutcome(): StudentActionOutcome {
     return {
       success: false,
-      title: 'Operation In Progress',
-      description: 'Another operation is currently updating this member. Please try again shortly.',
+      title: "Operation In Progress",
+      description:
+        "Another operation is currently updating this member. Please try again shortly.",
     };
   }
 }

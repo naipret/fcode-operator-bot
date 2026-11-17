@@ -1,15 +1,19 @@
-import type { Guild, GuildMember, Role } from 'discord.js';
-import type { BatchRoleMutationResult, RoundKey, Student } from '../model/Student.js';
-import type { StudentRepository } from '../repository/StudentRepository.js';
-import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
-import { InputValidator } from '../util/InputValidator.js';
-import { Logger } from '../util/Logger.js';
-import { MemberMutationHelper } from '../util/MemberMutationHelper.js';
+import type { Guild, GuildMember, Role } from "discord.js";
+import type {
+  BatchRoleMutationResult,
+  RoundKey,
+  Student,
+} from "../model/Student.js";
+import type { StudentRepository } from "../repository/StudentRepository.js";
+import type { GuildResourceResolver } from "../util/GuildResourceResolver.js";
+import { InputValidator } from "../util/InputValidator.js";
+import { Logger } from "../util/Logger.js";
+import { MemberMutationHelper } from "../util/MemberMutationHelper.js";
 
 /**
  * All recruitment stages eligible as source or target for /round promote.
  */
-export type StageKey = 'verified' | RoundKey;
+export type StageKey = "verified" | RoundKey;
 
 /**
  * Coordinates owner-only recruitment round transitions and bulk role revocation.
@@ -50,11 +54,15 @@ export class RoundController {
     onlyInput?: string | null,
   ): Student[] {
     const sourceStudents =
-      sourceStage === 'verified'
+      sourceStage === "verified"
         ? this.studentRepository.listAllVerifiedStudents()
         : this.studentRepository.listByRound(sourceStage);
 
-    return this.filterStudentsByTargetStrings(sourceStudents, excludeInput, onlyInput);
+    return this.filterStudentsByTargetStrings(
+      sourceStudents,
+      excludeInput,
+      onlyInput,
+    );
   }
 
   /**
@@ -71,7 +79,11 @@ export class RoundController {
     onlyInput?: string | null,
   ): Student[] {
     const sourceStudents = this.studentRepository.listByAnyRound(rounds);
-    return this.filterStudentsByTargetStrings(sourceStudents, excludeInput, onlyInput);
+    return this.filterStudentsByTargetStrings(
+      sourceStudents,
+      excludeInput,
+      onlyInput,
+    );
   }
 
   /**
@@ -88,14 +100,20 @@ export class RoundController {
     candidates: Student[],
     toStage: StageKey,
   ): Promise<BatchRoleMutationResult> {
-    const round1Role = this.resourceResolver.getRoundRole(guild, 'round-1');
-    const round2Role = this.resourceResolver.getRoundRole(guild, 'round-2');
-    const round3Role = this.resourceResolver.getRoundRole(guild, 'round-3');
+    const round1Role = this.resourceResolver.getRoundRole(guild, "round-1");
+    const round2Role = this.resourceResolver.getRoundRole(guild, "round-2");
+    const round3Role = this.resourceResolver.getRoundRole(guild, "round-3");
     if (!round1Role || !round2Role || !round3Role) {
-      throw new Error('One or more configured round roles were not found on the server.');
+      throw new Error(
+        "One or more configured round roles were not found on the server.",
+      );
     }
 
-    const managedRoundIds = new Set<string>([round1Role.id, round2Role.id, round3Role.id]);
+    const managedRoundIds = new Set<string>([
+      round1Role.id,
+      round2Role.id,
+      round3Role.id,
+    ]);
     const desiredRoundIds = this.buildDesiredRoundRoleIds(
       toStage,
       round1Role.id,
@@ -115,16 +133,19 @@ export class RoundController {
         managedRoundIds,
         desiredRoundIds,
       );
-      if (outcome === 'UPDATED') {
+      if (outcome === "UPDATED") {
         updatedStudentIds.push(student.studentId);
-      } else if (outcome === 'SKIPPED') {
+      } else if (outcome === "SKIPPED") {
         skippedCount += 1;
       } else {
         failedMembers.push(outcome);
       }
     }
 
-    this.studentRepository.applyRoundTransitionForMany(updatedStudentIds, toStage);
+    this.studentRepository.applyRoundTransitionForMany(
+      updatedStudentIds,
+      toStage,
+    );
 
     return {
       targetedCount: candidates.length,
@@ -152,7 +173,9 @@ export class RoundController {
     for (const round of rounds) {
       const roundRole = this.resourceResolver.getRoundRole(guild, round);
       if (!roundRole) {
-        throw new Error(`Configured role for "${round}" was not found on the server.`);
+        throw new Error(
+          `Configured role for "${round}" was not found on the server.`,
+        );
       }
       targetRoles.push(roundRole);
     }
@@ -163,10 +186,15 @@ export class RoundController {
     let skippedCount = 0;
 
     for (const student of candidates) {
-      const outcome = await this.revokeSingleStudentRoles(guild, student, targetRoleIds, rounds);
-      if (outcome === 'UPDATED') {
+      const outcome = await this.revokeSingleStudentRoles(
+        guild,
+        student,
+        targetRoleIds,
+        rounds,
+      );
+      if (outcome === "UPDATED") {
         updatedStudentIds.push(student.studentId);
-      } else if (outcome === 'SKIPPED') {
+      } else if (outcome === "SKIPPED") {
         updatedStudentIds.push(student.studentId);
         skippedCount += 1;
       } else {
@@ -203,7 +231,8 @@ export class RoundController {
       const allowedStudentIds = new Set(onlyTokens.studentIds);
       return sourceStudents.filter(
         (student) =>
-          allowedDiscordIds.has(student.discordId) || allowedStudentIds.has(student.studentId),
+          allowedDiscordIds.has(student.discordId) ||
+          allowedStudentIds.has(student.studentId),
       );
     }
 
@@ -213,7 +242,8 @@ export class RoundController {
       const excludedStudentIds = new Set(excludeTokens.studentIds);
       return sourceStudents.filter(
         (student) =>
-          !excludedDiscordIds.has(student.discordId) && !excludedStudentIds.has(student.studentId),
+          !excludedDiscordIds.has(student.discordId) &&
+          !excludedStudentIds.has(student.studentId),
       );
     }
 
@@ -248,33 +278,42 @@ export class RoundController {
           return `${student.studentId} (not in server)`;
         }
 
-        const databaseMatches = this.doesStudentMatchStageFlags(student, toStage);
+        const databaseMatches = this.doesStudentMatchStageFlags(
+          student,
+          toStage,
+        );
         const discordMatches = this.doesMemberMatchRoundRoles(
           member,
           managedRoundIds,
           desiredRoundIds,
         );
         if (databaseMatches && discordMatches) {
-          return 'SKIPPED';
+          return "SKIPPED";
         }
 
         if (!discordMatches) {
           const preservedIds = member.roles.cache
-            .filter((role) => role.id !== guild.id && !managedRoundIds.has(role.id))
+            .filter(
+              (role) => role.id !== guild.id && !managedRoundIds.has(role.id),
+            )
             .map((role) => role.id);
-          await member.edit({ roles: Array.from(new Set([...preservedIds, ...desiredRoundIds])) });
+          await member.edit({
+            roles: Array.from(new Set([...preservedIds, ...desiredRoundIds])),
+          });
         }
-        return 'UPDATED';
+        return "UPDATED";
       },
     ).catch((error: unknown) => {
       Logger.warn(
-        'RoundController',
+        "RoundController",
         `Failed transitioning ${student.studentId} to ${toStage}: ${String(error)}`,
       );
       return { acquired: true as const, value: student.studentId };
     });
 
-    return lockResult.acquired ? lockResult.value : `${student.studentId} (locked)`;
+    return lockResult.acquired
+      ? lockResult.value
+      : `${student.studentId} (locked)`;
   }
 
   /**
@@ -300,29 +339,33 @@ export class RoundController {
           guild.members.cache.get(student.discordId) ??
           (await guild.members.fetch(student.discordId).catch(() => null));
         if (!member) {
-          return 'UPDATED';
+          return "UPDATED";
         }
 
-        const hasTargetRole = member.roles.cache.some((role) => targetRoleIds.has(role.id));
+        const hasTargetRole = member.roles.cache.some((role) =>
+          targetRoleIds.has(role.id),
+        );
         if (!hasTargetRole) {
-          return 'SKIPPED';
+          return "SKIPPED";
         }
 
         const nextRoleIds = member.roles.cache
           .filter((role) => role.id !== guild.id && !targetRoleIds.has(role.id))
           .map((role) => role.id);
         await member.edit({ roles: nextRoleIds });
-        return 'UPDATED';
+        return "UPDATED";
       },
     ).catch((error: unknown) => {
       Logger.warn(
-        'RoundController',
-        `Failed revoking ${rounds.join(', ')} from ${student.studentId}: ${String(error)}`,
+        "RoundController",
+        `Failed revoking ${rounds.join(", ")} from ${student.studentId}: ${String(error)}`,
       );
       return { acquired: true as const, value: student.studentId };
     });
 
-    return lockResult.acquired ? lockResult.value : `${student.studentId} (locked)`;
+    return lockResult.acquired
+      ? lockResult.value
+      : `${student.studentId} (locked)`;
   }
 
   /**
@@ -341,13 +384,17 @@ export class RoundController {
     round3Id: string,
   ): Set<string> {
     const desiredRoundIds = new Set<string>();
-    if (toStage === 'round-1' || toStage === 'round-2' || toStage === 'round-3') {
+    if (
+      toStage === "round-1" ||
+      toStage === "round-2" ||
+      toStage === "round-3"
+    ) {
       desiredRoundIds.add(round1Id);
     }
-    if (toStage === 'round-2' || toStage === 'round-3') {
+    if (toStage === "round-2" || toStage === "round-3") {
       desiredRoundIds.add(round2Id);
     }
-    if (toStage === 'round-3') {
+    if (toStage === "round-3") {
       desiredRoundIds.add(round3Id);
     }
     return desiredRoundIds;
@@ -360,11 +407,16 @@ export class RoundController {
    * @param targetStage the target stage
    * @returns true if flags match
    */
-  private doesStudentMatchStageFlags(student: Student, targetStage: StageKey): boolean {
+  private doesStudentMatchStageFlags(
+    student: Student,
+    targetStage: StageKey,
+  ): boolean {
     const expectRound1 =
-      targetStage === 'round-1' || targetStage === 'round-2' || targetStage === 'round-3';
-    const expectRound2 = targetStage === 'round-2' || targetStage === 'round-3';
-    const expectRound3 = targetStage === 'round-3';
+      targetStage === "round-1" ||
+      targetStage === "round-2" ||
+      targetStage === "round-3";
+    const expectRound2 = targetStage === "round-2" || targetStage === "round-3";
+    const expectRound3 = targetStage === "round-3";
     return (
       student.isRound1 === expectRound1 &&
       student.isRound2 === expectRound2 &&

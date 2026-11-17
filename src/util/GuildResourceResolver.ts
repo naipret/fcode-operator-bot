@@ -1,6 +1,6 @@
-import type { Guild, GuildMember, Role } from 'discord.js';
-import type { AppConfig } from '../config/ConfigSchema.js';
-import type { RoundKey } from '../model/Student.js';
+import type { Guild, GuildMember, Role } from "discord.js";
+import type { AppConfig } from "../config/ConfigSchema.js";
+import type { RoundKey } from "../model/Student.js";
 
 /**
  * Resolves configured Discord roles, log channels, and caller authorization by Snowflake ID.
@@ -43,11 +43,11 @@ export class GuildResourceResolver {
    */
   public getRoundRoleId(roundKey: RoundKey): string {
     switch (roundKey) {
-      case 'round-1':
+      case "round-1":
         return this.appConfig.permissions.roundRoleIds.round1;
-      case 'round-2':
+      case "round-2":
         return this.appConfig.permissions.roundRoleIds.round2;
-      case 'round-3':
+      case "round-3":
         return this.appConfig.permissions.roundRoleIds.round3;
     }
   }
@@ -101,25 +101,37 @@ export class GuildResourceResolver {
     const missing: string[] = [];
 
     if (!guild.roles.cache.has(this.appConfig.permissions.ownerRoleId)) {
-      missing.push(`permissions.ownerRoleId (${this.appConfig.permissions.ownerRoleId})`);
+      missing.push(
+        `permissions.ownerRoleId (${this.appConfig.permissions.ownerRoleId})`,
+      );
     }
     if (!guild.roles.cache.has(this.appConfig.permissions.moderatorRoleId)) {
-      missing.push(`permissions.moderatorRoleId (${this.appConfig.permissions.moderatorRoleId})`);
+      missing.push(
+        `permissions.moderatorRoleId (${this.appConfig.permissions.moderatorRoleId})`,
+      );
     }
     if (!guild.roles.cache.has(this.appConfig.permissions.verifiedRoleId)) {
-      missing.push(`permissions.verifiedRoleId (${this.appConfig.permissions.verifiedRoleId})`);
+      missing.push(
+        `permissions.verifiedRoleId (${this.appConfig.permissions.verifiedRoleId})`,
+      );
     }
-    if (!guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round1)) {
+    if (
+      !guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round1)
+    ) {
       missing.push(
         `permissions.roundRoleIds.round1 (${this.appConfig.permissions.roundRoleIds.round1})`,
       );
     }
-    if (!guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round2)) {
+    if (
+      !guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round2)
+    ) {
       missing.push(
         `permissions.roundRoleIds.round2 (${this.appConfig.permissions.roundRoleIds.round2})`,
       );
     }
-    if (!guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round3)) {
+    if (
+      !guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round3)
+    ) {
       missing.push(
         `permissions.roundRoleIds.round3 (${this.appConfig.permissions.roundRoleIds.round3})`,
       );
@@ -128,7 +140,9 @@ export class GuildResourceResolver {
       this.appConfig.logging.discord.enabled &&
       !guild.channels.cache.has(this.appConfig.logging.discord.channelId)
     ) {
-      missing.push(`logging.discord.channelId (${this.appConfig.logging.discord.channelId})`);
+      missing.push(
+        `logging.discord.channelId (${this.appConfig.logging.discord.channelId})`,
+      );
     }
 
     return missing;

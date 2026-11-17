@@ -1,5 +1,5 @@
-import type { RoundKey, Student } from '../model/Student.js';
-import type { DatabaseClient } from './DatabaseClient.js';
+import type { RoundKey, Student } from "../model/Student.js";
+import type { DatabaseClient } from "./DatabaseClient.js";
 
 /**
  * Raw row projection returned by SQLite queries on the students table.
@@ -18,7 +18,7 @@ interface StudentRow {
  * Provides parameterized SQLite CRUD and synchronization queries for students and settings.
  */
 export class StudentRepository {
-  private static readonly VERIFICATION_ENABLED_KEY = 'verification_enabled';
+  private static readonly VERIFICATION_ENABLED_KEY = "verification_enabled";
   private readonly databaseClient: DatabaseClient;
 
   /**
@@ -41,7 +41,10 @@ export class StudentRepository {
       INSERT OR IGNORE INTO system_settings (setting_key, setting_value)
       VALUES (?, ?)
     `);
-    statement.run(StudentRepository.VERIFICATION_ENABLED_KEY, defaultEnabled ? 'true' : 'false');
+    statement.run(
+      StudentRepository.VERIFICATION_ENABLED_KEY,
+      defaultEnabled ? "true" : "false",
+    );
   }
 
   /**
@@ -52,12 +55,15 @@ export class StudentRepository {
   public isVerificationEnabled(): boolean {
     const connection = this.databaseClient.getConnection();
     const row = connection
-      .prepare('SELECT setting_value FROM system_settings WHERE setting_key = ?')
-      .get(StudentRepository.VERIFICATION_ENABLED_KEY) as { setting_value: string } | undefined;
+      .prepare(
+        "SELECT setting_value FROM system_settings WHERE setting_key = ?",
+      )
+      .get(StudentRepository.VERIFICATION_ENABLED_KEY) as
+      { setting_value: string } | undefined;
     if (!row) {
       return true;
     }
-    return row.setting_value === 'true';
+    return row.setting_value === "true";
   }
 
   /**
@@ -75,7 +81,10 @@ export class StudentRepository {
         ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value
       `,
       )
-      .run(StudentRepository.VERIFICATION_ENABLED_KEY, enabled ? 'true' : 'false');
+      .run(
+        StudentRepository.VERIFICATION_ENABLED_KEY,
+        enabled ? "true" : "false",
+      );
   }
 
   /**
@@ -87,7 +96,7 @@ export class StudentRepository {
   public findByStudentId(studentId: string): Student | null {
     const connection = this.databaseClient.getConnection();
     const row = connection
-      .prepare('SELECT * FROM students WHERE student_id = ?')
+      .prepare("SELECT * FROM students WHERE student_id = ?")
       .get(studentId.toUpperCase()) as StudentRow | undefined;
     return row ? this.mapRowToStudent(row) : null;
   }
@@ -100,8 +109,9 @@ export class StudentRepository {
    */
   public findByDiscordId(discordId: string): Student | null {
     const connection = this.databaseClient.getConnection();
-    const row = connection.prepare('SELECT * FROM students WHERE discord_id = ?').get(discordId) as
-      StudentRow | undefined;
+    const row = connection
+      .prepare("SELECT * FROM students WHERE discord_id = ?")
+      .get(discordId) as StudentRow | undefined;
     return row ? this.mapRowToStudent(row) : null;
   }
 
@@ -153,7 +163,7 @@ export class StudentRepository {
   public deleteByStudentId(studentId: string): boolean {
     const connection = this.databaseClient.getConnection();
     const result = connection
-      .prepare('DELETE FROM students WHERE student_id = ?')
+      .prepare("DELETE FROM students WHERE student_id = ?")
       .run(studentId.toUpperCase());
     return Number(result.changes) > 0;
   }
@@ -166,7 +176,9 @@ export class StudentRepository {
    */
   public deleteByDiscordId(discordId: string): boolean {
     const connection = this.databaseClient.getConnection();
-    const result = connection.prepare('DELETE FROM students WHERE discord_id = ?').run(discordId);
+    const result = connection
+      .prepare("DELETE FROM students WHERE discord_id = ?")
+      .run(discordId);
     return Number(result.changes) > 0;
   }
 
@@ -195,10 +207,14 @@ export class StudentRepository {
     if (rounds.length === 0) {
       return [];
     }
-    const predicates = rounds.map((round) => `${this.resolveRoundColumn(round)} = 1`).join(' OR ');
+    const predicates = rounds
+      .map((round) => `${this.resolveRoundColumn(round)} = 1`)
+      .join(" OR ");
     const connection = this.databaseClient.getConnection();
     const rows = connection
-      .prepare(`SELECT * FROM students WHERE is_verified = 1 AND (${predicates})`)
+      .prepare(
+        `SELECT * FROM students WHERE is_verified = 1 AND (${predicates})`,
+      )
       .all() as unknown as StudentRow[];
     return rows.map((row) => this.mapRowToStudent(row));
   }
@@ -211,7 +227,7 @@ export class StudentRepository {
   public listAllVerifiedStudents(): Student[] {
     const connection = this.databaseClient.getConnection();
     const rows = connection
-      .prepare('SELECT * FROM students WHERE is_verified = 1')
+      .prepare("SELECT * FROM students WHERE is_verified = 1")
       .all() as unknown as StudentRow[];
     return rows.map((row) => this.mapRowToStudent(row));
   }
@@ -241,7 +257,12 @@ export class StudentRepository {
         WHERE discord_id = ?
       `,
       )
-      .run(state.isRound1 ? 1 : 0, state.isRound2 ? 1 : 0, state.isRound3 ? 1 : 0, discordId);
+      .run(
+        state.isRound1 ? 1 : 0,
+        state.isRound2 ? 1 : 0,
+        state.isRound3 ? 1 : 0,
+        discordId,
+      );
   }
 
   /**
@@ -252,21 +273,24 @@ export class StudentRepository {
    */
   public applyRoundTransitionForMany(
     studentIds: string[],
-    targetStage: 'verified' | RoundKey,
+    targetStage: "verified" | RoundKey,
   ): void {
     if (studentIds.length === 0) {
       return;
     }
 
     const flags = {
-      isRound1: targetStage === 'round-1' || targetStage === 'round-2' || targetStage === 'round-3',
-      isRound2: targetStage === 'round-2' || targetStage === 'round-3',
-      isRound3: targetStage === 'round-3',
+      isRound1:
+        targetStage === "round-1" ||
+        targetStage === "round-2" ||
+        targetStage === "round-3",
+      isRound2: targetStage === "round-2" || targetStage === "round-3",
+      isRound3: targetStage === "round-3",
     };
 
     const connection = this.databaseClient.getConnection();
     const statement = connection.prepare(
-      'UPDATE students SET is_round_1 = ?, is_round_2 = ?, is_round_3 = ? WHERE student_id = ?',
+      "UPDATE students SET is_round_1 = ?, is_round_2 = ?, is_round_3 = ? WHERE student_id = ?",
     );
 
     this.databaseClient.runInTransaction(() => {
@@ -287,14 +311,21 @@ export class StudentRepository {
    * @param studentIds the list of student identifiers to update
    * @param rounds the round columns to clear
    */
-  public clearRoundFlagsForMany(studentIds: string[], rounds: RoundKey[]): void {
+  public clearRoundFlagsForMany(
+    studentIds: string[],
+    rounds: RoundKey[],
+  ): void {
     if (studentIds.length === 0 || rounds.length === 0) {
       return;
     }
 
-    const assignments = rounds.map((round) => `${this.resolveRoundColumn(round)} = 0`).join(', ');
+    const assignments = rounds
+      .map((round) => `${this.resolveRoundColumn(round)} = 0`)
+      .join(", ");
     const connection = this.databaseClient.getConnection();
-    const statement = connection.prepare(`UPDATE students SET ${assignments} WHERE student_id = ?`);
+    const statement = connection.prepare(
+      `UPDATE students SET ${assignments} WHERE student_id = ?`,
+    );
 
     this.databaseClient.runInTransaction(() => {
       for (const studentId of studentIds) {
@@ -311,12 +342,12 @@ export class StudentRepository {
    */
   private resolveRoundColumn(round: RoundKey): string {
     switch (round) {
-      case 'round-1':
-        return 'is_round_1';
-      case 'round-2':
-        return 'is_round_2';
-      case 'round-3':
-        return 'is_round_3';
+      case "round-1":
+        return "is_round_1";
+      case "round-2":
+        return "is_round_2";
+      case "round-3":
+        return "is_round_3";
     }
   }
 

@@ -1,5 +1,5 @@
-import { Colors, EmbedBuilder } from 'discord.js';
-import type { BatchRoleMutationResult } from '../model/Student.js';
+import { Colors, EmbedBuilder } from "discord.js";
+import type { BatchRoleMutationResult } from "../model/Student.js";
 
 /**
  * Builds a green success embed with consistent footer branding.
@@ -13,7 +13,7 @@ function buildSuccessEmbed(title: string, description: string): EmbedBuilder {
     .setColor(Colors.Green)
     .setTitle(title)
     .setDescription(description)
-    .setFooter({ text: 'F-Code Operator Bot' })
+    .setFooter({ text: "F-Code Operator Bot" })
     .setTimestamp();
 }
 
@@ -29,7 +29,7 @@ function buildWarningEmbed(title: string, description: string): EmbedBuilder {
     .setColor(Colors.Gold)
     .setTitle(title)
     .setDescription(description)
-    .setFooter({ text: 'F-Code Operator Bot' })
+    .setFooter({ text: "F-Code Operator Bot" })
     .setTimestamp();
 }
 
@@ -45,7 +45,7 @@ function buildErrorEmbed(title: string, description: string): EmbedBuilder {
     .setColor(Colors.Red)
     .setTitle(title)
     .setDescription(description)
-    .setFooter({ text: 'F-Code Operator Bot' })
+    .setFooter({ text: "F-Code Operator Bot" })
     .setTimestamp();
 }
 
@@ -61,7 +61,7 @@ function buildInfoEmbed(title: string, description: string): EmbedBuilder {
     .setColor(Colors.Blurple)
     .setTitle(title)
     .setDescription(description)
-    .setFooter({ text: 'F-Code Operator Bot' })
+    .setFooter({ text: "F-Code Operator Bot" })
     .setTimestamp();
 }
 
@@ -80,20 +80,20 @@ function buildBatchMutationEmbed(
 ): EmbedBuilder {
   const baseLines = [
     actionSummary,
-    '',
-    `Targeted: \`${result.targetedCount}\``,
-    `Updated: \`${result.updatedCount}\``,
-    `Skipped (Already Unchanged): \`${result.skippedCount}\``,
-    `Failed: \`${result.failedMembers.length}\``,
+    "",
+    `Targeted: \`${String(result.targetedCount)}\``,
+    `Updated: \`${String(result.updatedCount)}\``,
+    `Skipped (Already Unchanged): \`${String(result.skippedCount)}\``,
+    `Failed: \`${String(result.failedMembers.length)}\``,
   ];
 
   if (result.failedMembers.length > 0) {
-    const preview = result.failedMembers.slice(0, 15).join(', ');
-    baseLines.push('', `Failed Targets: ${preview}`);
-    return buildWarningEmbed(title, baseLines.join('\n'));
+    const preview = result.failedMembers.slice(0, 15).join(", ");
+    baseLines.push("", `Failed Targets: ${preview}`);
+    return buildWarningEmbed(title, baseLines.join("\n"));
   }
 
-  return buildSuccessEmbed(title, baseLines.join('\n'));
+  return buildSuccessEmbed(title, baseLines.join("\n"));
 }
 
 /**
