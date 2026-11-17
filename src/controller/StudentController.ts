@@ -343,12 +343,6 @@ export class StudentController {
     }
 
     const existingByDiscord = this.studentRepository.findByDiscordId(member.id);
-    if (
-      existingByDiscord &&
-      existingByDiscord.studentId !== validation.studentId
-    ) {
-      this.studentRepository.deleteByDiscordId(member.id);
-    }
 
     const staffTier = this.resourceResolver.resolveStaffTier(member);
     if (staffTier !== null) {
@@ -357,6 +351,7 @@ export class StudentController {
         validation.studentId,
         validation.formattedFullName,
         staffTier,
+        existingByDiscord,
       );
     }
 
@@ -379,7 +374,14 @@ export class StudentController {
         "StudentController",
       );
 
-    this.studentRepository.upsertStudent(student);
+    if (
+      existingByDiscord &&
+      existingByDiscord.studentId !== validation.studentId
+    ) {
+      this.studentRepository.replaceStudentRecord(member.id, student);
+    } else {
+      this.studentRepository.upsertStudent(student);
+    }
     const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : "";
 
     return {
@@ -404,6 +406,7 @@ export class StudentController {
     studentId: string,
     fullName: string,
     staffTier: "MOD" | "SUP",
+    existingByDiscord: Student | null,
   ): Promise<StudentActionOutcome> {
     const staffPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
     const staffNickname = InputValidator.formatNickname(
@@ -439,7 +442,11 @@ export class StudentController {
         roleIds,
         "StudentController",
       );
-    this.studentRepository.upsertStudent(staffRecord);
+    if (existingByDiscord && existingByDiscord.studentId !== studentId) {
+      this.studentRepository.replaceStudentRecord(member.id, staffRecord);
+    } else {
+      this.studentRepository.upsertStudent(staffRecord);
+    }
     const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : "";
 
     return {
@@ -518,9 +525,13 @@ export class StudentController {
     );
 
     if (existingStudent.studentId !== updatedStudent.studentId) {
-      this.studentRepository.deleteByDiscordId(existingStudent.discordId);
+      this.studentRepository.replaceStudentRecord(
+        existingStudent.discordId,
+        updatedStudent,
+      );
+    } else {
+      this.studentRepository.upsertStudent(updatedStudent);
     }
-    this.studentRepository.upsertStudent(updatedStudent);
 
     const activeRounds = this.formatActiveRounds(updatedStudent);
     const staffRoundNote =

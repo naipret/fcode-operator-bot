@@ -163,6 +163,19 @@ export class StudentRepository {
   }
 
   /**
+   * Atomically replaces any previous record bound to discordId and upserts the new student record.
+   *
+   * @param discordId the Discord user snowflake identifier whose old record should be removed
+   * @param student the replacement student domain object to persist
+   */
+  public replaceStudentRecord(discordId: string, student: Student): void {
+    this.databaseClient.runInTransaction(() => {
+      this.deleteByDiscordId(discordId);
+      this.upsertStudent(student);
+    });
+  }
+
+  /**
    * Deletes a student record by student identifier so the user can re-verify cleanly.
    *
    * @param studentId the uppercase student identifier to remove
