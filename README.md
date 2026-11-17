@@ -46,27 +46,53 @@ fcode-operator-bot/
 
 ---
 
-## 3. Local Setup and Execution
+## 3. Setup and Deployment
 
-1. Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
-2. Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.verifiedRoleId`, `permissions.roundRoleIds`, and `logging.discord.channelId` (if Discord logging is enabled).
-3. For prebuilt **Latest Release** archives (`fcode-operator-bot.zip` / `.tar.gz`), install runtime dependencies only and start directly without building:
+### Prerequisites
+
+1. **Discord Server Setup:** You may reference or clone the actual F22 recruitment server structure using this [Discord Server Template](https://discord.new/K7yMwH3Rx7B4) (adjust roles, channels, and permissions to match your cycle).
+2. **Discord Application Settings:** In the Discord Developer Portal, enable the **Server Members Intent** (`Privileged Gateway Intents`) and invite the bot with `bot` and `applications.commands` scopes.
+3. **Role Hierarchy:** Position the bot's managed role above `moderator`, `verified`, and `round-1` through `round-3` so it can update candidate nicknames and assign roles.
+4. **Configuration Files:**
+   - Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
+   - Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.verifiedRoleId`, `permissions.roundRoleIds`, and `logging.discord.channelId` (when `logging.discord.enabled` is `true`).
+
+### Option A: Prebuilt Release Archive (Free Hosting Panels and Production VPS)
+
+Use this option when deploying to free Discord bot hosting panels (such as Pterodactyl) or low-memory VPS instances without installing TypeScript or building on the host:
+
+1. Download `fcode-operator-bot.zip` (or `.tar.gz`) from the repository's **Latest Release** and extract it into the host working directory.
+2. Add your `.env` and `config.yaml` files alongside `package.json`.
+3. Install production dependencies only and start the prebuilt bundle:
 
 ```bash
 npm ci --omit=dev
 npm run start
 ```
 
-Or for local development from source:
+> If a hosting panel runs Node directly instead of `npm run start`, set the startup command to `node --env-file-if-exists=.env dist/index.js`.
+
+### Option B: From Source (`git clone` and Local Development)
+
+Use this option when developing locally or building from the TypeScript source (`src/`):
 
 ```bash
-npm install
-npm run format
+npm ci
+npm run format:check
 npm run lint
+npm run build
+npm run start
+```
+
+For hot-reloading development with `tsx`:
+
+```bash
 npm run dev
 ```
 
-For Docker builds and container execution, mount `.env`, `config.yaml`, and the persistent `data/` and `logs/` volumes:
+### Option C: Docker
+
+Mount `.env`, `config.yaml`, and persistent `data/` and `logs/` directories so SQLite databases, backups, and daily log files survive container restarts:
 
 ```bash
 docker build -t fcode-operator-bot .
