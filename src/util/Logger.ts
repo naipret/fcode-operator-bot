@@ -5,41 +5,12 @@ import type { Client } from 'discord.js';
 import pino, { type DestinationStream, type Logger as PinoLogger } from 'pino';
 import pinoPretty from 'pino-pretty';
 
+import type { LoggingConfig } from '../config/ConfigSchema.js';
+
 /**
  * Log severity levels supported by the application logger.
  */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-/**
- * Configuration shape for 3-tier independent logging (file, console, discord).
- */
-export interface ThreeTierLoggingConfig {
-  file: {
-    enabled: boolean;
-    level: LogLevel;
-    directory: string;
-    maxFiles: number;
-  };
-  console: {
-    enabled: boolean;
-    level: LogLevel;
-  };
-  discord: {
-    enabled: boolean;
-    level: LogLevel;
-    channelId: string;
-  };
-}
-
-/**
- * Legacy flat logging config supported temporarily during incremental commits.
- */
-interface LegacyLoggingConfig {
-  level: LogLevel;
-  console: boolean;
-  file: boolean;
-  directory: string;
-}
 
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
   debug: 10,
@@ -319,37 +290,6 @@ class DiscordLogDestination extends Writable {
 }
 
 /**
- * Normalizes legacy or 3-tier logging config into a uniform ThreeTierLoggingConfig.
- *
- * @param config incoming logging configuration object
- * @returns normalized 3-tier logging configuration
- */
-function normalizeConfig(
-  config: ThreeTierLoggingConfig | LegacyLoggingConfig,
-): ThreeTierLoggingConfig {
-  if ('file' in config && typeof config.file === 'object') {
-    return config;
-  }
-  return {
-    file: {
-      enabled: config.file,
-      level: config.level,
-      directory: config.directory,
-      maxFiles: 14,
-    },
-    console: {
-      enabled: config.console,
-      level: config.level,
-    },
-    discord: {
-      enabled: false,
-      level: 'info',
-      channelId: '',
-    },
-  };
-}
-
-/**
  * Builds a default pretty console Pino instance for early startup before config.yaml is loaded.
  *
  * @returns configured startup Pino logger
@@ -378,10 +318,9 @@ function attachDiscordClient(client: Client): void {
 /**
  * Reconfigures the logger outputs and independent severity thresholds from config.yaml.
  *
- * @param rawConfig validated logging configuration block
+ * @param config validated logging configuration block
  */
-function configure(rawConfig: ThreeTierLoggingConfig | LegacyLoggingConfig): void {
-  const config = normalizeConfig(rawConfig);
+function configure(config: LoggingConfig): void {
   const streams: Array<{ level: LogLevel; stream: DestinationStream }> = [];
   const enabledLevels: LogLevel[] = [];
 

@@ -36,7 +36,7 @@ const VERIFY_BUTTON_MODAL_ID = 'fcode-verify-button-modal';
  * Presents the /verify command, persistent button handler, and 1-step verification modal.
  */
 export class VerifyCommandView {
-  private readonly appConfig: AppConfig;
+  private appConfig: AppConfig;
   private readonly studentRepository: StudentRepository;
   private readonly verificationController: VerificationController;
   private readonly resourceResolver: GuildResourceResolver;
@@ -62,6 +62,15 @@ export class VerifyCommandView {
   }
 
   /**
+   * Replaces the active configuration reference during a hot-reload.
+   *
+   * @param newConfig the newly validated application configuration
+   */
+  public updateConfig(newConfig: AppConfig): void {
+    this.appConfig = newConfig;
+  }
+
+  /**
    * Builds the slash command metadata registered with Discord.
    *
    * @returns a SlashCommandBuilder defining /verify and its optional inline fields
@@ -70,7 +79,7 @@ export class VerifyCommandView {
     const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
     return new SlashCommandBuilder()
       .setName('verify')
-      .setDescription('Verify your student identity and unlock Round 1.')
+      .setDescription('Verify your student identity.')
       .addStringOption((option) =>
         option
           .setName('full-name')
@@ -215,10 +224,9 @@ export class VerifyCommandView {
     }
 
     if (!this.verificationController.isVerificationGateEnabled()) {
-      const supportMention = this.resourceResolver.getSupportChannelMention();
       const warningEmbed = EmbedFactory.buildWarningEmbed(
         'Verification Closed',
-        `${this.appConfig.messages.verificationClosedMessage} Support channel: ${supportMention}.`,
+        this.appConfig.messages.verificationClosedMessage,
       );
       if (isEphemeral) {
         await interaction.reply({ flags: MessageFlags.Ephemeral, embeds: [warningEmbed] });

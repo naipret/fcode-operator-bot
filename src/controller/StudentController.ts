@@ -29,11 +29,11 @@ export interface StudentSyncOutcome {
 }
 
 /**
- * Handles moderator and owner commands for inspecting, registering, and resetting student records.
+ * Handles moderator and owner commands for inspecting, registering, resetting, and syncing students.
  */
 export class StudentController {
   private static readonly DISCORD_MISSING_PERMISSIONS_CODE = 50013;
-  private readonly appConfig: AppConfig;
+  private appConfig: AppConfig;
   private readonly studentRepository: StudentRepository;
   private readonly resourceResolver: GuildResourceResolver;
 
@@ -55,27 +55,58 @@ export class StudentController {
   }
 
   /**
-   * Looks up a student record by student identifier or Discord user identifier.
+   * Replaces the active configuration reference during a hot-reload.
    *
-   * @param rawStudentId optional student identifier
-   * @param discordId optional Discord user snowflake identifier
+   * @param newConfig the newly validated application configuration
+   */
+  public updateConfig(newConfig: AppConfig): void {
+    this.appConfig = newConfig;
+  }
+
+  /**
+   * Resolves a single student record from a unified target string (@mention, Discord ID, or Student ID).
+   *
+   * @param target raw target input from slash command options
+   * @returns the matched Student entity or null when absent
+   */
+  private resolveStudentByTarget(target: string): Student | null {
+    const tokens = InputValidator.parseTargetTokens(target);
+    for (const discordId of tokens.discordIds) {
+      const found = this.studentRepository.findByDiscordId(discordId);
+      if (found) {
+        return found;
+      }
+    }
+    for (const studentId of tokens.studentIds) {
+      const found = this.studentRepository.findByStudentId(studentId);
+      if (found) {
+        return found;
+      }
+    }
+
+    const trimmed = target.trim();
+    if (/^\d{17,20}$/.test(trimmed)) {
+      return this.studentRepository.findByDiscordId(trimmed);
+    }
+    if (trimmed.length > 0) {
+      return this.studentRepository.findByStudentId(trimmed.toUpperCase());
+    }
+    return null;
+  }
+
+  /**
+   * Looks up a student record by @mention, Discord ID, or Student ID.
+   *
+   * @param target unified target identifier string
    * @returns a StudentActionOutcome containing the student details if found
    */
-  public lookupStudent(
-    rawStudentId: string | null,
-    discordId: string | null,
-  ): StudentActionOutcome {
-    const student = rawStudentId
-      ? this.studentRepository.findByStudentId(rawStudentId.trim().toUpperCase())
-      : discordId
-        ? this.studentRepository.findByDiscordId(discordId)
-        : null;
-
+  public lookupStudent(target: string): StudentActionOutcome {
+    const student = this.resolveStudentByTarget(target);
     if (!student) {
       return {
         success: false,
         title: 'Student Not Found',
-        description: 'No student record matched the provided Student ID or Discord user.',
+        description: 'No student record matched the provided user or Student ID.',
       };
     }
 
@@ -146,14 +177,19 @@ export class StudentController {
       this.studentRepository.deleteByDiscordId(member.id);
     }
 
+    const defaultRound = this.appConfig.verification.defaultRound;
     const student: Student = {
       studentId: validation.studentId,
       fullName: validation.formattedFullName,
       discordId: member.id,
       isVerified: true,
-      isRound1: existingByDiscord ? existingByDiscord.isRound1 : true,
-      isRound2: existingByDiscord ? existingByDiscord.isRound2 : false,
-      isRound3: existingByDiscord ? existingByDiscord.isRound3 : false,
+      isRound1: existingByDiscord
+        ? existingByDiscord.isRound1
+        : defaultRound === 'round-1' || defaultRound === 'round-2' || defaultRound === 'round-3',
+      isRound2: existingByDiscord
+        ? existingByDiscord.isRound2
+        : defaultRound === 'round-2' || defaultRound === 'round-3',
+      isRound3: existingByDiscord ? existingByDiscord.isRound3 : defaultRound === 'round-3',
     };
 
     const roleIds = this.buildTargetRoleIds(member, student);
@@ -187,31 +223,20 @@ export class StudentController {
    * Deletes a student record from SQLite and removes recruitment roles and nickname from Discord.
    *
    * @param guild the target Discord guild
-   * @param rawStudentId optional student identifier
-   * @param targetMember optional Discord guild member
+   * @param target unified target string (@mention, Discord ID, or Student ID)
    * @returns a StudentActionOutcome summarizing the reset
    */
-  public async resetStudent(
-    guild: Guild,
-    rawStudentId: string | null,
-    targetMember: GuildMember | null,
-  ): Promise<StudentActionOutcome> {
-    const existingStudent = rawStudentId
-      ? this.studentRepository.findByStudentId(rawStudentId.trim().toUpperCase())
-      : targetMember
-        ? this.studentRepository.findByDiscordId(targetMember.id)
-        : null;
-
+  public async resetStudent(guild: Guild, target: string): Promise<StudentActionOutcome> {
+    const existingStudent = this.resolveStudentByTarget(target);
     if (!existingStudent) {
       return {
         success: false,
         title: 'Student Not Found',
-        description: 'No student record matched the provided Student ID or Discord user.',
+        description: 'No student record matched the provided user or Student ID.',
       };
     }
 
-    const member =
-      targetMember ?? (await guild.members.fetch(existingStudent.discordId).catch(() => null));
+    const member = await guild.members.fetch(existingStudent.discordId).catch(() => null);
 
     let discordCleanupNote = '';
     if (member) {
@@ -242,31 +267,24 @@ export class StudentController {
   }
 
   /**
-   * Synchronizes verified SQLite student records (nickname and stage roles) to Discord.
+   * Synchronizes verified SQLite student records (nickname and roles) to Discord.
    *
    * @param guild the target Discord guild
-   * @param rawStudentId optional single student ID to sync
-   * @param discordId optional single Discord user ID to sync
+   * @param target optional unified target string (@mention, Discord ID, or Student ID)
    * @returns a StudentSyncOutcome summarizing updated, skipped, and failed members
    */
   public async syncStudentsToDiscord(
     guild: Guild,
-    rawStudentId?: string | null,
-    discordId?: string | null,
+    target?: string | null,
   ): Promise<StudentSyncOutcome> {
     let targets: Student[];
-    if (rawStudentId || discordId) {
-      const matched = rawStudentId
-        ? this.studentRepository.findByStudentId(rawStudentId.trim().toUpperCase())
-        : discordId
-          ? this.studentRepository.findByDiscordId(discordId)
-          : null;
+    if (target && target.trim().length > 0) {
+      const matched = this.resolveStudentByTarget(target);
       if (!matched || !matched.isVerified) {
         return {
           success: false,
           title: 'Student Not Found',
-          description:
-            'No verified student record matched the provided Student ID or Discord user.',
+          description: 'No verified student record matched the provided user or Student ID.',
           updatedCount: 0,
           skippedCount: 0,
           failedMembers: [],
@@ -357,21 +375,22 @@ export class StudentController {
   }
 
   /**
-   * Returns role IDs on a member excluding bot-managed round roles.
+   * Returns role IDs on a member excluding bot-managed verified and round roles.
    *
    * @param member the target guild member
    * @returns array of preserved Discord role Snowflake IDs
    */
   private getPreservedRoleIds(member: GuildMember): string[] {
-    const { roundRoleIds } = this.appConfig.permissions;
-    const managedRoundIds = new Set<string>([
+    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
+    const managedRoleIds = new Set<string>([
+      verifiedRoleId,
       roundRoleIds.round1,
       roundRoleIds.round2,
       roundRoleIds.round3,
     ]);
 
     return member.roles.cache
-      .filter((role) => role.id !== member.guild.id && !managedRoundIds.has(role.id))
+      .filter((role) => role.id !== member.guild.id && !managedRoleIds.has(role.id))
       .map((role) => role.id);
   }
 
@@ -384,8 +403,11 @@ export class StudentController {
    */
   private buildTargetRoleIds(member: GuildMember, student: Student): string[] {
     const roleIds = new Set<string>(this.getPreservedRoleIds(member));
-    const { roundRoleIds } = this.appConfig.permissions;
+    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
 
+    if (student.isVerified && member.guild.roles.cache.has(verifiedRoleId)) {
+      roleIds.add(verifiedRoleId);
+    }
     if (student.isRound1 && member.guild.roles.cache.has(roundRoleIds.round1)) {
       roleIds.add(roundRoleIds.round1);
     }

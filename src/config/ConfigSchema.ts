@@ -9,6 +9,8 @@ const snowflakeSchema = z
   .min(1, 'Required ID is empty; fill in this field.')
   .regex(/^\d{17,20}$/, 'Must be a valid Discord Snowflake ID (17 to 20 digits).');
 
+const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
+
 /**
  * Zod schema validating the root config.yaml structure.
  */
@@ -32,11 +34,12 @@ export const appConfigSchema = z.object({
   }),
   verification: z.object({
     enabledByDefault: z.boolean(),
-    supportChannelId: snowflakeSchema,
+    defaultRound: z.enum(['none', 'round-1', 'round-2', 'round-3']),
   }),
   permissions: z.object({
     ownerRoleId: snowflakeSchema,
     moderatorRoleId: snowflakeSchema,
+    verifiedRoleId: snowflakeSchema,
     roundRoleIds: z.object({
       round1: snowflakeSchema,
       round2: snowflakeSchema,
@@ -45,13 +48,45 @@ export const appConfigSchema = z.object({
   }),
   database: z.object({
     directory: z.string().trim().min(1),
+    sync: z.object({
+      enabled: z.boolean(),
+      intervalMinutes: z.number().int().min(1),
+    }),
+    backup: z.object({
+      enabled: z.boolean(),
+      directory: z.string().trim().min(1),
+      intervalMinutes: z.number().int().min(1),
+      maxFiles: z.number().int().min(1),
+    }),
   }),
-  logging: z.object({
-    level: z.enum(['debug', 'info', 'warn', 'error']),
-    console: z.boolean(),
-    file: z.boolean(),
-    directory: z.string().trim().min(1),
-  }),
+  logging: z
+    .object({
+      file: z.object({
+        enabled: z.boolean(),
+        level: logLevelSchema,
+        directory: z.string().trim().min(1),
+        maxFiles: z.number().int().min(1),
+      }),
+      console: z.object({
+        enabled: z.boolean(),
+        level: logLevelSchema,
+      }),
+      discord: z.object({
+        enabled: z.boolean(),
+        level: logLevelSchema,
+        channelId: z.string().trim(),
+      }),
+    })
+    .superRefine((logging, ctx) => {
+      if (logging.discord.enabled && !/^\d{17,20}$/.test(logging.discord.channelId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['discord', 'channelId'],
+          message:
+            'logging.discord.channelId must be a valid Discord Snowflake ID (17 to 20 digits) when Discord logging is enabled.',
+        });
+      }
+    }),
   messages: z.object({
     verificationPanelTitle: z.string().min(1),
     verificationPanelDescription: z.string().min(1),

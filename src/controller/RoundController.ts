@@ -1,4 +1,4 @@
-import type { Guild } from 'discord.js';
+import type { Guild, GuildMember } from 'discord.js';
 import type { BatchRoleMutationResult, RoundKey, Student } from '../model/Student.js';
 import type { StudentRepository } from '../repository/StudentRepository.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
@@ -6,7 +6,12 @@ import { InputValidator } from '../util/InputValidator.js';
 import { Logger } from '../util/Logger.js';
 
 /**
- * Coordinates owner-only recruitment round promotion, bulk role revocation, and gate toggling.
+ * All recruitment stages eligible as source or target for /round promote.
+ */
+export type StageKey = 'verified' | RoundKey;
+
+/**
+ * Coordinates owner-only recruitment round transitions and bulk role revocation.
  */
 export class RoundController {
   private readonly studentRepository: StudentRepository;
@@ -27,30 +32,22 @@ export class RoundController {
   }
 
   /**
-   * Enables or disables new candidate registrations via the SQLite gate setting.
+   * Resolves eligible students holding sourceStage and filters them by exclude or only targets.
    *
-   * @param enabled true to open registration, false to close registration
-   * @returns the persisted gate state
-   */
-  public setVerificationEnabled(enabled: boolean): boolean {
-    this.studentRepository.setVerificationEnabled(enabled);
-    return enabled;
-  }
-
-  /**
-   * Lists eligible students who hold the source round role and filters them by exclude or only targets.
-   *
-   * @param sourceRound the starting round key ('round-1' or 'round-2')
+   * @param sourceStage the starting stage ('verified', 'round-1', 'round-2', or 'round-3')
    * @param excludeInput optional string of mentions or student IDs to exclude
    * @param onlyInput optional string of mentions or student IDs to include exclusively
    * @returns filtered array of eligible Student records
    */
-  public resolveCandidatesForAdvance(
-    sourceRound: RoundKey,
+  public resolveCandidates(
+    sourceStage: StageKey,
     excludeInput?: string | null,
     onlyInput?: string | null,
   ): Student[] {
-    const sourceStudents = this.studentRepository.listByRound(sourceRound);
+    const sourceStudents =
+      sourceStage === 'verified'
+        ? this.studentRepository.listAllVerifiedStudents()
+        : this.studentRepository.listByRound(sourceStage);
 
     if (onlyInput && onlyInput.trim().length > 0) {
       const onlyTokens = InputValidator.parseTargetTokens(onlyInput);
@@ -76,42 +73,36 @@ export class RoundController {
   }
 
   /**
-   * Resolves the target round from explicit option or default sequential progression.
-   *
-   * @param fromRound the source round ('round-1' or 'round-2')
-   * @param toRound optional override round ('round-2' or 'round-3')
-   * @returns the target RoundKey or null if invalid progression
-   */
-  public resolveTargetRound(
-    fromRound: 'round-1' | 'round-2',
-    toRound: 'round-2' | 'round-3' | null,
-  ): 'round-2' | 'round-3' | null {
-    if (!toRound) {
-      return fromRound === 'round-1' ? 'round-2' : 'round-3';
-    }
-    if (fromRound === 'round-2' && toRound !== 'round-3') {
-      return null;
-    }
-    return toRound;
-  }
-
-  /**
-   * Promotes eligible students to targetRound on both Discord and SQLite.
+   * Transitions eligible students from any source stage to any target stage (forward or backward).
    *
    * @param guild the target Discord guild
-   * @param candidates the resolved list of students to promote
-   * @param targetRound the destination round ('round-2' or 'round-3')
+   * @param candidates the resolved list of students to transition
+   * @param toStage the destination stage ('verified' or 'round-1' | 'round-2' | 'round-3')
    * @returns a summary BatchRoleMutationResult
-   * @throws Error if the target round role ID does not exist in the guild
+   * @throws Error if any configured round role is missing on the server
    */
-  public async advanceStudentsToRound(
+  public async transitionStudents(
     guild: Guild,
     candidates: Student[],
-    targetRound: 'round-2' | 'round-3',
+    toStage: StageKey,
   ): Promise<BatchRoleMutationResult> {
-    const targetRole = this.resourceResolver.getRoundRole(guild, targetRound);
-    if (!targetRole) {
-      throw new Error(`Configured role for "${targetRound}" was not found on the server.`);
+    const round1Role = this.resourceResolver.getRoundRole(guild, 'round-1');
+    const round2Role = this.resourceResolver.getRoundRole(guild, 'round-2');
+    const round3Role = this.resourceResolver.getRoundRole(guild, 'round-3');
+    if (!round1Role || !round2Role || !round3Role) {
+      throw new Error('One or more configured round roles were not found on the server.');
+    }
+
+    const managedRoundIds = new Set<string>([round1Role.id, round2Role.id, round3Role.id]);
+    const desiredRoundIds = new Set<string>();
+    if (toStage === 'round-1' || toStage === 'round-2' || toStage === 'round-3') {
+      desiredRoundIds.add(round1Role.id);
+    }
+    if (toStage === 'round-2' || toStage === 'round-3') {
+      desiredRoundIds.add(round2Role.id);
+    }
+    if (toStage === 'round-3') {
+      desiredRoundIds.add(round3Role.id);
     }
 
     const updatedStudentIds: string[] = [];
@@ -119,31 +110,42 @@ export class RoundController {
     let skippedCount = 0;
 
     for (const student of candidates) {
-      const alreadyHasFlag = targetRound === 'round-2' ? student.isRound2 : student.isRound3;
       const member = await guild.members.fetch(student.discordId).catch(() => null);
       if (!member) {
         failedMembers.push(`${student.studentId} (not in server)`);
         continue;
       }
 
-      const alreadyHasDiscordRole = member.roles.cache.has(targetRole.id);
-      if (alreadyHasFlag && alreadyHasDiscordRole) {
+      const dbMatches = this.doesStudentMatchStageFlags(student, toStage);
+      const discordMatches = this.doesMemberMatchRoundRoles(
+        member,
+        managedRoundIds,
+        desiredRoundIds,
+      );
+
+      if (dbMatches && discordMatches) {
         skippedCount += 1;
         continue;
       }
 
       try {
-        if (!alreadyHasDiscordRole) {
-          await member.roles.add(targetRole);
+        if (!discordMatches) {
+          const preservedIds = member.roles.cache
+            .filter((role) => role.id !== guild.id && !managedRoundIds.has(role.id))
+            .map((role) => role.id);
+          await member.edit({ roles: Array.from(new Set([...preservedIds, ...desiredRoundIds])) });
         }
         updatedStudentIds.push(student.studentId);
       } catch (error) {
-        Logger.warn('RoundController', `Failed advancing ${student.studentId}: ${String(error)}`);
+        Logger.warn(
+          'RoundController',
+          `Failed transitioning ${student.studentId} to ${toStage}: ${String(error)}`,
+        );
         failedMembers.push(student.studentId);
       }
     }
 
-    this.studentRepository.setRoundFlagForMany(updatedStudentIds, targetRound, true);
+    this.studentRepository.applyRoundTransitionForMany(updatedStudentIds, toStage);
 
     return {
       targetedCount: candidates.length,
@@ -154,38 +156,29 @@ export class RoundController {
   }
 
   /**
-   * Revokes a round role from multiple members identified by Discord IDs or student IDs.
+   * Revokes a single round role from a resolved list of candidates on Discord and SQLite.
    *
    * @param guild the target Discord guild
+   * @param candidates the resolved list of students to revoke from
    * @param round the round role to remove
-   * @param targetDiscordIds array of Discord user IDs
-   * @param targetStudentIds array of uppercase student IDs
    * @returns a summary BatchRoleMutationResult
    * @throws Error if the round role ID does not exist in the guild
    */
-  public async revokeRoundRoleFromTargets(
+  public async revokeRoundFromCandidates(
     guild: Guild,
+    candidates: Student[],
     round: RoundKey,
-    targetDiscordIds: string[],
-    targetStudentIds: string[],
   ): Promise<BatchRoleMutationResult> {
     const roundRole = this.resourceResolver.getRoundRole(guild, round);
     if (!roundRole) {
       throw new Error(`Configured role for "${round}" was not found on the server.`);
     }
 
-    const resolvedStudents = this.resolveStudentsFromMixedTargets(
-      targetDiscordIds,
-      targetStudentIds,
-    );
-    const matchedDiscordIds = new Set(resolvedStudents.map((student) => student.discordId));
-    const directDiscordIds = targetDiscordIds.filter((id) => !matchedDiscordIds.has(id));
-
     const updatedStudentIds: string[] = [];
     const failedMembers: string[] = [];
     let skippedCount = 0;
 
-    for (const student of resolvedStudents) {
+    for (const student of candidates) {
       const member = await guild.members.fetch(student.discordId).catch(() => null);
       if (!member) {
         updatedStudentIds.push(student.studentId);
@@ -208,23 +201,10 @@ export class RoundController {
       }
     }
 
-    for (const discordId of directDiscordIds) {
-      const member = await guild.members.fetch(discordId).catch(() => null);
-      if (!member || !member.roles.cache.has(roundRole.id)) {
-        skippedCount += 1;
-        continue;
-      }
-      try {
-        await member.roles.remove(roundRole);
-      } catch {
-        failedMembers.push(discordId);
-      }
-    }
-
     this.studentRepository.setRoundFlagForMany(updatedStudentIds, round, false);
 
     return {
-      targetedCount: resolvedStudents.length + directDiscordIds.length,
+      targetedCount: candidates.length,
       updatedCount: updatedStudentIds.length - skippedCount,
       skippedCount,
       failedMembers,
@@ -232,29 +212,44 @@ export class RoundController {
   }
 
   /**
-   * Resolves unique Student records from combined Discord ID and Student ID inputs.
+   * Checks whether a student's SQLite round flags already match the target stage.
    *
-   * @param discordIds list of Discord user snowflake IDs
-   * @param studentIds list of uppercase student IDs
-   * @returns deduplicated array of found Student records
+   * @param student the student domain record
+   * @param targetStage the target stage
+   * @returns true if flags match
    */
-  private resolveStudentsFromMixedTargets(discordIds: string[], studentIds: string[]): Student[] {
-    const studentMap = new Map<string, Student>();
+  private doesStudentMatchStageFlags(student: Student, targetStage: StageKey): boolean {
+    const expectR1 =
+      targetStage === 'round-1' || targetStage === 'round-2' || targetStage === 'round-3';
+    const expectR2 = targetStage === 'round-2' || targetStage === 'round-3';
+    const expectR3 = targetStage === 'round-3';
+    return (
+      student.isRound1 === expectR1 &&
+      student.isRound2 === expectR2 &&
+      student.isRound3 === expectR3
+    );
+  }
 
-    for (const discordId of discordIds) {
-      const found = this.studentRepository.findByDiscordId(discordId);
-      if (found) {
-        studentMap.set(found.studentId, found);
+  /**
+   * Checks whether a Discord member's current round roles match the desired round role set.
+   *
+   * @param member the Discord guild member
+   * @param managedRoundIds all managed round role IDs
+   * @param desiredRoundIds desired round role IDs
+   * @returns true if member holds the exact desired subset of managed round roles
+   */
+  private doesMemberMatchRoundRoles(
+    member: GuildMember,
+    managedRoundIds: Set<string>,
+    desiredRoundIds: Set<string>,
+  ): boolean {
+    for (const roleId of managedRoundIds) {
+      const hasRole = member.roles.cache.has(roleId);
+      const shouldHave = desiredRoundIds.has(roleId);
+      if (hasRole !== shouldHave) {
+        return false;
       }
     }
-
-    for (const studentId of studentIds) {
-      const found = this.studentRepository.findByStudentId(studentId);
-      if (found) {
-        studentMap.set(found.studentId, found);
-      }
-    }
-
-    return Array.from(studentMap.values());
+    return true;
   }
 }

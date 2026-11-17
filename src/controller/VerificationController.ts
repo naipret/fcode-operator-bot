@@ -11,7 +11,7 @@ import { Logger } from '../util/Logger.js';
  */
 export class VerificationController {
   private static readonly DISCORD_MISSING_PERMISSIONS_CODE = 50013;
-  private readonly appConfig: AppConfig;
+  private appConfig: AppConfig;
   private readonly studentRepository: StudentRepository;
   private readonly resourceResolver: GuildResourceResolver;
   private readonly inFlightUsers: Set<string>;
@@ -32,6 +32,15 @@ export class VerificationController {
     this.studentRepository = studentRepository;
     this.resourceResolver = resourceResolver;
     this.inFlightUsers = new Set<string>();
+  }
+
+  /**
+   * Replaces the active configuration reference during a hot-reload.
+   *
+   * @param newConfig the newly validated application configuration
+   */
+  public updateConfig(newConfig: AppConfig): void {
+    this.appConfig = newConfig;
   }
 
   /**
@@ -95,11 +104,10 @@ export class VerificationController {
         Logger.warn('VerificationController', 'Verification rejected because gate is closed', {
           discordId: member.id,
         });
-        const supportMention = this.resourceResolver.getSupportChannelMention();
         return {
           status: 'GATE_CLOSED',
           title: 'Verification Closed',
-          description: `${this.appConfig.messages.verificationClosedMessage} Support channel: ${supportMention}.`,
+          description: this.appConfig.messages.verificationClosedMessage,
         };
       }
 
@@ -109,7 +117,6 @@ export class VerificationController {
         this.appConfig.bot,
       );
       if (!nicknameResult.valid) {
-        const supportMention = this.resourceResolver.getSupportChannelMention();
         if (nicknameResult.reason === 'NICKNAME_TOO_LONG') {
           Logger.warn(
             'VerificationController',
@@ -119,7 +126,7 @@ export class VerificationController {
           return {
             status: 'NICKNAME_TOO_LONG',
             title: this.appConfig.messages.verificationErrorTitle,
-            description: `${nicknameResult.error}\n\nPlease contact support in ${supportMention} for assistance.`,
+            description: nicknameResult.error,
           };
         }
 
@@ -141,22 +148,23 @@ export class VerificationController {
           studentId: nicknameResult.studentId,
           existingDiscordId: existingByStudentId.discordId,
         });
-        const supportMention = this.resourceResolver.getSupportChannelMention();
         return {
           status: 'CONFLICT',
           title: this.appConfig.messages.verificationErrorTitle,
-          description: `Student ID \`${nicknameResult.studentId}\` is already verified under another Discord account. Please contact support in ${supportMention}.`,
+          description: `Student ID \`${nicknameResult.studentId}\` is already verified under another Discord account.`,
         };
       }
 
+      const defaultRound = this.appConfig.verification.defaultRound;
       const studentRecord: Student = {
         studentId: nicknameResult.studentId,
         fullName: nicknameResult.formattedFullName,
         discordId: member.id,
         isVerified: true,
-        isRound1: true,
-        isRound2: false,
-        isRound3: false,
+        isRound1:
+          defaultRound === 'round-1' || defaultRound === 'round-2' || defaultRound === 'round-3',
+        isRound2: defaultRound === 'round-2' || defaultRound === 'round-3',
+        isRound3: defaultRound === 'round-3',
       };
 
       const targetRoleIds = this.computeDesiredRoleIds(member, studentRecord);
@@ -172,13 +180,16 @@ export class VerificationController {
         studentId: studentRecord.studentId,
         fullName: studentRecord.fullName,
         nickname: nicknameResult.nickname,
+        defaultRound,
       });
 
-      const round1RoleId = this.resourceResolver.getRoundRoleId('round-1');
+      const verifiedRoleId = this.resourceResolver.getVerifiedRoleId();
+      const activeRounds = this.formatActiveRoundsSummary(studentRecord);
+      const roundLine = activeRounds !== 'None' ? `\nUnlocked Rounds: ${activeRounds}` : '';
       return {
         status: 'VERIFIED',
         title: this.appConfig.messages.verificationSuccessTitle,
-        description: `Your identity has been verified.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${nicknameResult.nickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nUnlocked Round: <@&${round1RoleId}>`,
+        description: `Your identity has been verified.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${nicknameResult.nickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nAssigned Role: <@&${verifiedRoleId}>${roundLine}`,
         student: studentRecord,
         appliedNickname: nicknameResult.nickname,
         nicknameHierarchyWarning: hierarchyWarning ?? undefined,
@@ -195,16 +206,18 @@ export class VerificationController {
    */
   public syncMemberRolesToDatabase(member: GuildMember): void {
     const existingStudent = this.studentRepository.findByDiscordId(member.id);
-    if (!existingStudent || !existingStudent.isVerified) {
+    if (!existingStudent) {
       return;
     }
 
-    const { roundRoleIds } = this.appConfig.permissions;
+    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
+    const isVerified = member.roles.cache.has(verifiedRoleId);
     const isRound1 = member.roles.cache.has(roundRoleIds.round1);
     const isRound2 = member.roles.cache.has(roundRoleIds.round2);
     const isRound3 = member.roles.cache.has(roundRoleIds.round3);
 
     const hasChanged =
+      existingStudent.isVerified !== isVerified ||
       existingStudent.isRound1 !== isRound1 ||
       existingStudent.isRound2 !== isRound2 ||
       existingStudent.isRound3 !== isRound3;
@@ -214,6 +227,7 @@ export class VerificationController {
     }
 
     this.studentRepository.syncRoleStateByDiscordId(member.id, {
+      isVerified,
       isRound1,
       isRound2,
       isRound3,
@@ -221,6 +235,7 @@ export class VerificationController {
     Logger.info('VerificationController', 'Synchronized member role update to database', {
       discordId: member.id,
       studentId: existingStudent.studentId,
+      isVerified,
       isRound1,
       isRound2,
       isRound3,
@@ -228,7 +243,7 @@ export class VerificationController {
   }
 
   /**
-   * Restores nickname, active stage roles, and team role for a returning student.
+   * Restores nickname and active roles for a returning student.
    *
    * @param member the returning Discord guild member
    * @param student the persisted Student record matched by discord_id
@@ -295,14 +310,17 @@ export class VerificationController {
    * @returns deduplicated Discord role snowflake IDs to assign on the member
    */
   private computeDesiredRoleIds(member: GuildMember, student: Student): string[] {
-    const managedIds = this.getManagedRoundRoleIdsSet();
+    const managedIds = this.getManagedRoleIdsSet();
     const preservedRoleIds = member.roles.cache
       .filter((role) => role.id !== member.guild.id && !managedIds.has(role.id))
       .map((role) => role.id);
 
     const targetIds = new Set<string>(preservedRoleIds);
-    const { roundRoleIds } = this.appConfig.permissions;
+    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
 
+    if (student.isVerified && member.guild.roles.cache.has(verifiedRoleId)) {
+      targetIds.add(verifiedRoleId);
+    }
     if (student.isRound1 && member.guild.roles.cache.has(roundRoleIds.round1)) {
       targetIds.add(roundRoleIds.round1);
     }
@@ -317,13 +335,18 @@ export class VerificationController {
   }
 
   /**
-   * Collects all configured round role Snowflake IDs managed by verification workflows.
+   * Collects all configured verified and round role Snowflake IDs managed by verification workflows.
    *
-   * @returns a Set of configured round role IDs
+   * @returns a Set of configured managed role IDs
    */
-  private getManagedRoundRoleIdsSet(): Set<string> {
-    const { roundRoleIds } = this.appConfig.permissions;
-    return new Set<string>([roundRoleIds.round1, roundRoleIds.round2, roundRoleIds.round3]);
+  private getManagedRoleIdsSet(): Set<string> {
+    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
+    return new Set<string>([
+      verifiedRoleId,
+      roundRoleIds.round1,
+      roundRoleIds.round2,
+      roundRoleIds.round3,
+    ]);
   }
 
   /**

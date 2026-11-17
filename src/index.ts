@@ -1,6 +1,15 @@
-import { Events, type GuildMember, type Interaction, MessageFlags, REST, Routes } from 'discord.js';
+import {
+  Events,
+  type Guild,
+  type GuildMember,
+  type Interaction,
+  MessageFlags,
+  REST,
+  Routes,
+} from 'discord.js';
 import { createDiscordClient } from './client.js';
 import { ConfigLoader } from './config/ConfigLoader.js';
+import type { AppConfig } from './config/ConfigSchema.js';
 import { RoundController } from './controller/RoundController.js';
 import { StudentController } from './controller/StudentController.js';
 import { VerificationController } from './controller/VerificationController.js';
@@ -11,6 +20,7 @@ import { Logger } from './util/Logger.js';
 import { EmbedFactory } from './view/EmbedFactory.js';
 import { RoundCommandView } from './view/RoundCommandView.js';
 import { StudentCommandView } from './view/StudentCommandView.js';
+import { type ReloadOutcome, SystemCommandView } from './view/SystemCommandView.js';
 import { VerifyCommandView } from './view/VerifyCommandView.js';
 
 /**
@@ -41,12 +51,14 @@ async function registerGuildCommands(
  * @param verifyView the verification command view
  * @param studentView the student command view
  * @param roundView the round command view
+ * @param systemView the system command view
  */
 async function dispatchInteraction(
   interaction: Interaction,
   verifyView: VerifyCommandView,
   studentView: StudentCommandView,
   roundView: RoundCommandView,
+  systemView: SystemCommandView,
 ): Promise<void> {
   try {
     if (interaction.isChatInputCommand()) {
@@ -59,6 +71,9 @@ async function dispatchInteraction(
           return;
         case 'round':
           await roundView.handleSlashCommand(interaction);
+          return;
+        case 'system':
+          await systemView.handleSlashCommand(interaction);
           return;
       }
       return;
@@ -78,6 +93,10 @@ async function dispatchInteraction(
     if (interaction.isModalSubmit()) {
       if (verifyView.ownsCustomId(interaction.customId)) {
         await verifyView.handleModalSubmit(interaction);
+        return;
+      }
+      if (studentView.ownsCustomId(interaction.customId)) {
+        await studentView.handleModalSubmit(interaction);
       }
       return;
     }
@@ -113,41 +132,167 @@ async function dispatchInteraction(
 }
 
 /**
- * Bootstraps configuration, SQLite repository, controllers, views, and Discord Gateway connection.
+ * Bootstraps configuration, SQLite repository, controllers, views, schedulers, and Discord Gateway.
  */
 async function bootstrap(): Promise<void> {
   const environment = ConfigLoader.loadEnvironment();
-  const appConfig = ConfigLoader.loadAppConfig(environment.CONFIG_PATH);
-  Logger.configure(appConfig.logging);
+  let activeConfig: AppConfig = ConfigLoader.loadAppConfig(environment.CONFIG_PATH);
+  Logger.configure(activeConfig.logging);
 
-  const databasePath = ConfigLoader.resolveDatabasePath(appConfig);
-  Logger.info('Bootstrap', `Using SQLite database at ${databasePath}`);
-  const databaseClient = new DatabaseClient(databasePath);
+  const activeDatabasePath = ConfigLoader.resolveDatabasePath(activeConfig);
+  Logger.info('Bootstrap', `Using SQLite database at ${activeDatabasePath}`);
+  const databaseClient = new DatabaseClient(activeDatabasePath);
   const studentRepository = new StudentRepository(databaseClient);
-  studentRepository.seedVerificationGateDefault(appConfig.verification.enabledByDefault);
+  studentRepository.seedVerificationGateDefault(activeConfig.verification.enabledByDefault);
 
-  const resourceResolver = new GuildResourceResolver(appConfig);
+  const resourceResolver = new GuildResourceResolver(activeConfig);
   const verificationController = new VerificationController(
-    appConfig,
+    activeConfig,
     studentRepository,
     resourceResolver,
   );
-  const studentController = new StudentController(appConfig, studentRepository, resourceResolver);
+  const studentController = new StudentController(
+    activeConfig,
+    studentRepository,
+    resourceResolver,
+  );
   const roundController = new RoundController(studentRepository, resourceResolver);
 
   const verifyView = new VerifyCommandView(
-    appConfig,
+    activeConfig,
     studentRepository,
     verificationController,
     resourceResolver,
   );
-  const studentView = new StudentCommandView(studentController, resourceResolver);
-  const roundView = new RoundCommandView(appConfig, roundController, resourceResolver);
+  const studentView = new StudentCommandView(activeConfig, studentController, resourceResolver);
+  const roundView = new RoundCommandView(roundController, resourceResolver);
+
+  let syncTimer: NodeJS.Timeout | null = null;
+  let backupTimer: NodeJS.Timeout | null = null;
+  let isSyncInProgress = false;
+
+  const scheduleBackgroundTasks = (guild: Guild, config: AppConfig): void => {
+    if (syncTimer !== null) {
+      clearInterval(syncTimer);
+      syncTimer = null;
+    }
+    if (backupTimer !== null) {
+      clearInterval(backupTimer);
+      backupTimer = null;
+    }
+
+    if (config.database.sync.enabled) {
+      const intervalMs = config.database.sync.intervalMinutes * 60 * 1000;
+      syncTimer = setInterval(() => {
+        if (isSyncInProgress) {
+          return;
+        }
+        isSyncInProgress = true;
+        void studentController
+          .syncStudentsToDiscord(guild)
+          .then((result) => {
+            if (result.updatedCount > 0 || result.failedMembers.length > 0) {
+              Logger.info('AutoSync', 'Reconciled database changes to Discord', {
+                updatedCount: result.updatedCount,
+                skippedCount: result.skippedCount,
+                failedCount: result.failedMembers.length,
+              });
+            } else {
+              Logger.debug('AutoSync', 'Database and Discord are in sync', {
+                checkedCount: result.skippedCount,
+              });
+            }
+          })
+          .catch((error: unknown) => {
+            Logger.error('AutoSync', 'Periodic sync failed', error);
+          })
+          .finally(() => {
+            isSyncInProgress = false;
+          });
+      }, intervalMs);
+      syncTimer.unref();
+    }
+
+    if (config.database.backup.enabled) {
+      const intervalMs = config.database.backup.intervalMinutes * 60 * 1000;
+      backupTimer = setInterval(() => {
+        try {
+          const backupPath = databaseClient.createBackup(
+            config.database.backup.directory,
+            config.database.backup.maxFiles,
+            config.bot.clubCohortPrefix,
+          );
+          Logger.info('AutoBackup', `Created SQLite backup at ${backupPath}`);
+        } catch (error) {
+          Logger.error('AutoBackup', 'Scheduled SQLite backup failed', error);
+        }
+      }, intervalMs);
+      backupTimer.unref();
+    }
+  };
+
+  let activeGuild: Guild | null = null;
+
+  const reloadRuntimeConfig = (guild: Guild): ReloadOutcome => {
+    let candidateConfig: AppConfig;
+    try {
+      candidateConfig = ConfigLoader.loadAppConfig(environment.CONFIG_PATH);
+    } catch (error) {
+      return {
+        success: false,
+        title: 'Config Reload Failed',
+        description: `Kept previous running configuration.\n\n\`\`\`\n${error instanceof Error ? error.message : String(error)}\n\`\`\``,
+      };
+    }
+
+    const candidateResolver = new GuildResourceResolver(candidateConfig);
+    const missingResources = candidateResolver.validateConfiguredResources(guild);
+    if (missingResources.length > 0) {
+      return {
+        success: false,
+        title: 'Config Reload Failed',
+        description: `Kept previous running configuration because configured Discord IDs were not found:\n${missingResources.map((item) => `• \`${item}\``).join('\n')}`,
+      };
+    }
+
+    const previousDbPath = ConfigLoader.resolveDatabasePath(activeConfig);
+    const nextDbPath = ConfigLoader.resolveDatabasePath(candidateConfig);
+
+    activeConfig = candidateConfig;
+    resourceResolver.updateConfig(candidateConfig);
+    verificationController.updateConfig(candidateConfig);
+    studentController.updateConfig(candidateConfig);
+    verifyView.updateConfig(candidateConfig);
+    studentView.updateConfig(candidateConfig);
+    systemView.updateConfig(candidateConfig);
+    Logger.configure(candidateConfig.logging);
+    scheduleBackgroundTasks(guild, candidateConfig);
+
+    const dbNotice =
+      previousDbPath !== nextDbPath
+        ? `\n\nNote: Database path changed (\`${previousDbPath}\` -> \`${nextDbPath}\`). Restart the bot to switch SQLite files.`
+        : '';
+
+    return {
+      success: true,
+      title: 'Configuration Reloaded',
+      description: `Validated and applied \`${environment.CONFIG_PATH}\` with zero downtime.${dbNotice}`,
+    };
+  };
+
+  const systemView = new SystemCommandView(
+    activeConfig,
+    studentRepository,
+    studentController,
+    resourceResolver,
+    reloadRuntimeConfig,
+  );
 
   const client = createDiscordClient();
 
   client.once(Events.ClientReady, (readyClient) => {
     void (async () => {
+      Logger.attachDiscordClient(readyClient);
       Logger.info('Bootstrap', `Logged in as ${readyClient.user.tag}.`);
 
       const guild = await readyClient.guilds.fetch(environment.DISCORD_SERVER_ID).catch(() => null);
@@ -160,6 +305,8 @@ async function bootstrap(): Promise<void> {
         databaseClient.close();
         process.exit(1);
       }
+
+      activeGuild = guild;
 
       await Promise.all([
         guild.roles.fetch(),
@@ -189,6 +336,8 @@ async function bootstrap(): Promise<void> {
         failedCount: syncResult.failedMembers.length,
       });
 
+      scheduleBackgroundTasks(guild, activeConfig);
+
       await registerGuildCommands(
         environment.DISCORD_APPLICATION_TOKEN,
         environment.DISCORD_APPLICATION_ID,
@@ -197,6 +346,7 @@ async function bootstrap(): Promise<void> {
           verifyView.getCommandDefinition().toJSON(),
           studentView.getCommandDefinition().toJSON(),
           roundView.getCommandDefinition().toJSON(),
+          systemView.getCommandDefinition().toJSON(),
         ],
       );
     })().catch((error) => {
@@ -216,11 +366,20 @@ async function bootstrap(): Promise<void> {
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    void dispatchInteraction(interaction, verifyView, studentView, roundView);
+    void dispatchInteraction(interaction, verifyView, studentView, roundView, systemView);
   });
 
   const shutdown = (signal: string): void => {
     Logger.info('Shutdown', `Received ${signal}. Closing Discord client and SQLite connection.`);
+    if (syncTimer !== null) {
+      clearInterval(syncTimer);
+    }
+    if (backupTimer !== null) {
+      clearInterval(backupTimer);
+    }
+    if (activeGuild) {
+      activeGuild = null;
+    }
     void client.destroy();
     databaseClient.close();
     process.exit(0);

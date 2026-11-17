@@ -3,10 +3,10 @@ import type { AppConfig } from '../config/ConfigSchema.js';
 import type { RoundKey } from '../model/Student.js';
 
 /**
- * Resolves configured Discord roles, support channel mentions, and caller authorization by Snowflake ID.
+ * Resolves configured Discord roles, log channels, and caller authorization by Snowflake ID.
  */
 export class GuildResourceResolver {
-  private readonly appConfig: AppConfig;
+  private appConfig: AppConfig;
 
   /**
    * Creates a GuildResourceResolver bound to the validated application configuration.
@@ -15,6 +15,34 @@ export class GuildResourceResolver {
    */
   public constructor(appConfig: AppConfig) {
     this.appConfig = appConfig;
+  }
+
+  /**
+   * Replaces the active configuration reference during a hot-reload.
+   *
+   * @param newConfig the newly validated application configuration
+   */
+  public updateConfig(newConfig: AppConfig): void {
+    this.appConfig = newConfig;
+  }
+
+  /**
+   * Returns the configured Discord Snowflake ID for the base verified role.
+   *
+   * @returns the configured verified role Snowflake ID
+   */
+  public getVerifiedRoleId(): string {
+    return this.appConfig.permissions.verifiedRoleId;
+  }
+
+  /**
+   * Resolves the configured base verified role from the guild cache.
+   *
+   * @param guild the target Discord guild
+   * @returns the matching Discord Role or null when absent
+   */
+  public getVerifiedRole(guild: Guild): Role | null {
+    return guild.roles.cache.get(this.getVerifiedRoleId()) ?? null;
   }
 
   /**
@@ -46,15 +74,6 @@ export class GuildResourceResolver {
   }
 
   /**
-   * Formats a clickable channel mention for the configured support channel ID.
-   *
-   * @returns a Discord channel mention string
-   */
-  public getSupportChannelMention(): string {
-    return `<#${this.appConfig.verification.supportChannelId}>`;
-  }
-
-  /**
    * Determines whether a guild member is the Server Owner or holds the configured owner role ID.
    *
    * @param guild the target Discord guild
@@ -83,7 +102,7 @@ export class GuildResourceResolver {
   }
 
   /**
-   * Verifies that all configured Discord role IDs and the support channel ID exist in the target guild.
+   * Verifies that all configured Discord role IDs and optional log channel ID exist in the target guild.
    *
    * @param guild the target Discord guild after fetching roles and channels
    * @returns an array of descriptive missing resource messages (empty when all IDs resolve)
@@ -91,16 +110,14 @@ export class GuildResourceResolver {
   public validateConfiguredResources(guild: Guild): string[] {
     const missing: string[] = [];
 
-    if (!guild.channels.cache.has(this.appConfig.verification.supportChannelId)) {
-      missing.push(
-        `verification.supportChannelId (${this.appConfig.verification.supportChannelId})`,
-      );
-    }
     if (!guild.roles.cache.has(this.appConfig.permissions.ownerRoleId)) {
       missing.push(`permissions.ownerRoleId (${this.appConfig.permissions.ownerRoleId})`);
     }
     if (!guild.roles.cache.has(this.appConfig.permissions.moderatorRoleId)) {
       missing.push(`permissions.moderatorRoleId (${this.appConfig.permissions.moderatorRoleId})`);
+    }
+    if (!guild.roles.cache.has(this.appConfig.permissions.verifiedRoleId)) {
+      missing.push(`permissions.verifiedRoleId (${this.appConfig.permissions.verifiedRoleId})`);
     }
     if (!guild.roles.cache.has(this.appConfig.permissions.roundRoleIds.round1)) {
       missing.push(
@@ -116,6 +133,12 @@ export class GuildResourceResolver {
       missing.push(
         `permissions.roundRoleIds.round3 (${this.appConfig.permissions.roundRoleIds.round3})`,
       );
+    }
+    if (
+      this.appConfig.logging.discord.enabled &&
+      !guild.channels.cache.has(this.appConfig.logging.discord.channelId)
+    ) {
+      missing.push(`logging.discord.channelId (${this.appConfig.logging.discord.channelId})`);
     }
 
     return missing;
