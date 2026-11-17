@@ -4,7 +4,22 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'data/**', '.agents/**', '*.mjs'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'data/**',
+      'logs/**',
+      '.agents/**',
+      '.agent/**',
+      '.gemini/**',
+      '.claude/**',
+      '.codex/**',
+      '.cursor/**',
+      '.windsurf/**',
+      '.vscode/**',
+      '.idea/**',
+      '*.mjs',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

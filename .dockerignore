@@ -3,6 +3,14 @@ dist
 data
 logs
 .agents
+.agent
+.gemini
+.claude
+.codex
+.cursor
+.windsurf
+.vscode
+.idea
 .env
 .env.*
 config.yaml

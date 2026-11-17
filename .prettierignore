@@ -1,5 +1,14 @@
 node_modules/
 dist/
 data/
+logs/
 .agents/
+.agent/
+.gemini/
+.claude/
+.codex/
+.cursor/
+.windsurf/
+.vscode/
+.idea/
 package-lock.json
