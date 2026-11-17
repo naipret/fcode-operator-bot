@@ -127,6 +127,8 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 5. [Naming Conventions](docs/NAMING_CONVENTIONS.md): TypeScript and Discord naming standards.
 6. [Clean Code Standards](docs/CLEAN_CODE.md): TSDoc-only comment rules and exception handling discipline.
 7. [Engineering Writing Style](docs/WRITING_STYLE.md): Technical prose rules enforced across all project documentation.
+8. [Contributing Guidelines](CONTRIBUTING.md): Git workflow, Conventional Commits, and automated Husky quality checks.
+9. [AI Agent Guide](AGENTS.md): Operating boundaries, verification commands, and reference index for AI coding agents.
 
 ---
 
