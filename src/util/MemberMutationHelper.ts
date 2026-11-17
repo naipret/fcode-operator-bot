@@ -6,6 +6,11 @@ import { Logger } from "./Logger.js";
 const DISCORD_MISSING_PERMISSIONS_CODE = 50013;
 
 /**
+ * Target staff role transition mode when updating Discord roles.
+ */
+export type StaffTransitionTarget = "MOD" | "SUP" | "NONE" | "KEEP";
+
+/**
  * Result returned by runWithMemberLock indicating whether the member lock was acquired.
  */
 export type MemberLockResult<T> =
@@ -104,6 +109,47 @@ function buildDesiredRoleIds(
 }
 
 /**
+ * Computes Discord role IDs for staff promotion, switching, or downgrade reset.
+ *
+ * @param member the target Discord guild member
+ * @param permissions the configured permission role IDs
+ * @param targetStaffRole desired staff role state or KEEP for observer updates
+ * @returns deduplicated Discord role Snowflake IDs preserving unrelated roles
+ */
+function getRoleIdsForStaffTransition(
+  member: GuildMember,
+  permissions: AppConfig["permissions"],
+  targetStaffRole: StaffTransitionTarget,
+): string[] {
+  const basePreserved = getPreservedRoleIds(member, permissions);
+  if (targetStaffRole === "KEEP") {
+    return basePreserved;
+  }
+
+  const staffRoleIds = new Set<string>([
+    permissions.moderatorRoleId,
+    permissions.supporterRoleId,
+  ]);
+  const targetIds = new Set<string>(
+    basePreserved.filter((roleId) => !staffRoleIds.has(roleId)),
+  );
+
+  if (
+    targetStaffRole === "MOD" &&
+    member.guild.roles.cache.has(permissions.moderatorRoleId)
+  ) {
+    targetIds.add(permissions.moderatorRoleId);
+  } else if (
+    targetStaffRole === "SUP" &&
+    member.guild.roles.cache.has(permissions.supporterRoleId)
+  ) {
+    targetIds.add(permissions.supporterRoleId);
+  }
+
+  return Array.from(targetIds);
+}
+
+/**
  * Mutates member roles as a fallback when Discord blocks nickname edits for higher-ranked members.
  *
  * @param member the target Discord guild member
@@ -186,5 +232,6 @@ export const MemberMutationHelper = {
   runWithMemberLock,
   getPreservedRoleIds,
   buildDesiredRoleIds,
+  getRoleIdsForStaffTransition,
   applyMemberNicknameAndRoles,
 } as const;

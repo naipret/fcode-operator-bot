@@ -188,23 +188,102 @@ function validateStudentId(
 }
 
 /**
- * Formats a standardized recruitment nickname from a stored Title Case full name and student ID.
+ * Formats a standardized recruitment or staff nickname from a Title Case full name and student ID.
  *
  * @param fullName the stored Title Case full name
  * @param studentId the stored uppercase student identifier
  * @param botConfig the bot configuration section from config.yaml
+ * @param prefixOverride optional prefix overriding clubCohortPrefix (for example, MOD or SUP)
  * @returns the rendered nickname string
  */
 function formatNickname(
   fullName: string,
   studentId: string,
   botConfig: BotConfig,
+  prefixOverride?: string,
 ): string {
   const pascalName = toPascalCaseAsciiName(fullName);
+  const activePrefix = prefixOverride ?? botConfig.clubCohortPrefix;
   return botConfig.nicknameTemplate
-    .replaceAll("{prefix}", botConfig.clubCohortPrefix)
+    .replaceAll("{prefix}", activePrefix)
     .replaceAll("{name}", pascalName)
     .replaceAll("{studentId}", studentId);
+}
+
+/**
+ * Escapes literal regular expression metacharacters in a template or prefix string.
+ *
+ * @param value raw string segment
+ * @returns escaped regular expression pattern string
+ */
+function escapeRegExpLiteral(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Rewrites the prefix of an existing standardized nickname while preserving name and student ID.
+ *
+ * @param currentNickname the member's current guild nickname
+ * @param botConfig the bot configuration section from config.yaml
+ * @param nextPrefix the target prefix (for example, MOD, SUP, or clubCohortPrefix)
+ * @returns the updated nickname, or null if currentNickname is not standardized
+ */
+function rewriteStandardizedNicknamePrefix(
+  currentNickname: string | null,
+  botConfig: BotConfig,
+  nextPrefix: string,
+): string | null {
+  if (!currentNickname) {
+    return null;
+  }
+
+  const knownPrefixes = Array.from(
+    new Set([
+      botConfig.clubCohortPrefix,
+      botConfig.moderatorPrefix,
+      botConfig.supporterPrefix,
+    ]),
+  ).map((prefix) => escapeRegExpLiteral(prefix));
+
+  const templatePattern = escapeRegExpLiteral(botConfig.nicknameTemplate)
+    .replaceAll("\\{prefix\\}", `(${knownPrefixes.join("|")})`)
+    .replaceAll("\\{name\\}", "([A-Za-z]{2,})")
+    .replaceAll("\\{studentId\\}", "([A-Za-z0-9]+)");
+
+  const match = new RegExp(`^${templatePattern}$`).exec(currentNickname.trim());
+  if (!match?.[2] || !match[3]) {
+    return null;
+  }
+
+  const normalizedStudentId = match[3].toUpperCase();
+  if (!new RegExp(botConfig.studentIdRegex).test(normalizedStudentId)) {
+    return null;
+  }
+
+  return botConfig.nicknameTemplate
+    .replaceAll("{prefix}", nextPrefix)
+    .replaceAll("{name}", match[2])
+    .replaceAll("{studentId}", normalizedStudentId);
+}
+
+/**
+ * Checks whether a guild nickname conforms to the configured standardized nickname template.
+ *
+ * @param currentNickname the member's current guild nickname
+ * @param botConfig the bot configuration section from config.yaml
+ * @returns true when the nickname matches any configured prefix and student ID format
+ */
+function hasStandardizedNickname(
+  currentNickname: string | null,
+  botConfig: BotConfig,
+): boolean {
+  return (
+    rewriteStandardizedNicknamePrefix(
+      currentNickname,
+      botConfig,
+      botConfig.clubCohortPrefix,
+    ) !== null
+  );
 }
 
 /**
@@ -243,22 +322,36 @@ function buildValidatedNickname(
     idResult.studentId,
     botConfig,
   );
+  const longestPrefix = [
+    botConfig.clubCohortPrefix,
+    botConfig.moderatorPrefix,
+    botConfig.supporterPrefix,
+  ].reduce((longest, current) =>
+    current.length > longest.length ? current : longest,
+  );
+  const maxLengthCandidate = formatNickname(
+    nameResult.formattedFullName,
+    idResult.studentId,
+    botConfig,
+    longestPrefix,
+  );
   const fixedEnvelopeLength = formatNickname(
     "",
     idResult.studentId,
     botConfig,
+    longestPrefix,
   ).length;
   const maxAllowedNameLength =
     botConfig.maxNicknameLength - fixedEnvelopeLength;
 
-  if (nickname.length > botConfig.maxNicknameLength) {
+  if (maxLengthCandidate.length > botConfig.maxNicknameLength) {
     return {
       valid: false,
       reason: "NICKNAME_TOO_LONG",
       pascalName: nameResult.pascalName,
       currentNameLength: nameResult.pascalName.length,
       maxAllowedNameLength,
-      error: `Your normalized nickname name "${nameResult.pascalName}" is ${String(nameResult.pascalName.length)} characters long, which causes the final nickname (${String(nickname.length)} characters) to exceed Discord's ${String(botConfig.maxNicknameLength)}-character limit. Your normalized name must be ${String(maxAllowedNameLength)} characters or fewer.`,
+      error: `Your normalized nickname name "${nameResult.pascalName}" is ${String(nameResult.pascalName.length)} characters long, which causes the final nickname (${String(maxLengthCandidate.length)} characters) to exceed Discord's ${String(botConfig.maxNicknameLength)}-character limit. Your normalized name must be ${String(maxAllowedNameLength)} characters or fewer.`,
     };
   }
 
@@ -338,6 +431,8 @@ export const InputValidator = {
   validateFullName,
   validateStudentId,
   formatNickname,
+  rewriteStandardizedNicknamePrefix,
+  hasStandardizedNickname,
   buildValidatedNickname,
   interpolateConfigText,
   parseTargetTokens,

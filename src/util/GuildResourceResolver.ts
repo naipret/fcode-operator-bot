@@ -1,4 +1,4 @@
-import type { Guild, GuildMember, Role } from "discord.js";
+import type { Guild, GuildMember, PartialGuildMember, Role } from "discord.js";
 import type { AppConfig } from "../config/ConfigSchema.js";
 import type { RoundKey } from "../model/Student.js";
 
@@ -33,6 +33,54 @@ export class GuildResourceResolver {
    */
   public getVerifiedRoleId(): string {
     return this.appConfig.permissions.verifiedRoleId;
+  }
+
+  /**
+   * Returns the configured Discord Snowflake ID for the moderator role.
+   *
+   * @returns the configured moderator role Snowflake ID
+   */
+  public getModeratorRoleId(): string {
+    return this.appConfig.permissions.moderatorRoleId;
+  }
+
+  /**
+   * Returns the configured Discord Snowflake ID for the supporter role.
+   *
+   * @returns the configured supporter role Snowflake ID
+   */
+  public getSupporterRoleId(): string {
+    return this.appConfig.permissions.supporterRoleId;
+  }
+
+  /**
+   * Resolves the highest-precedence staff tier currently held by a guild member.
+   *
+   * @param member the guild member or partial member snapshot
+   * @returns "MOD" if moderator, "SUP" if supporter only, or null otherwise
+   */
+  public resolveStaffTier(
+    member: GuildMember | PartialGuildMember,
+  ): "MOD" | "SUP" | null {
+    if (member.roles.cache.has(this.appConfig.permissions.moderatorRoleId)) {
+      return "MOD";
+    }
+    if (member.roles.cache.has(this.appConfig.permissions.supporterRoleId)) {
+      return "SUP";
+    }
+    return null;
+  }
+
+  /**
+   * Returns the configured nickname prefix corresponding to a staff tier.
+   *
+   * @param tier the resolved staff tier
+   * @returns configured moderatorPrefix or supporterPrefix
+   */
+  public getPrefixForStaffTier(tier: "MOD" | "SUP"): string {
+    return tier === "MOD"
+      ? this.appConfig.bot.moderatorPrefix
+      : this.appConfig.bot.supporterPrefix;
   }
 
   /**
@@ -108,6 +156,11 @@ export class GuildResourceResolver {
     if (!guild.roles.cache.has(this.appConfig.permissions.moderatorRoleId)) {
       missing.push(
         `permissions.moderatorRoleId (${this.appConfig.permissions.moderatorRoleId})`,
+      );
+    }
+    if (!guild.roles.cache.has(this.appConfig.permissions.supporterRoleId)) {
+      missing.push(
+        `permissions.supporterRoleId (${this.appConfig.permissions.supporterRoleId})`,
       );
     }
     if (!guild.roles.cache.has(this.appConfig.permissions.verifiedRoleId)) {
