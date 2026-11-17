@@ -1,10 +1,9 @@
-import { DiscordAPIError, type Guild, type GuildMember } from "discord.js";
+import type { Guild, GuildMember } from "discord.js";
 import type { AppConfig } from "../config/ConfigSchema.js";
 import type { Student } from "../model/Student.js";
 import type { StudentRepository } from "../repository/StudentRepository.js";
 import type { GuildResourceResolver } from "../util/GuildResourceResolver.js";
 import { InputValidator } from "../util/InputValidator.js";
-import { Logger } from "../util/Logger.js";
 import { MemberMutationHelper } from "../util/MemberMutationHelper.js";
 
 /**
@@ -41,10 +40,9 @@ export interface StudentSyncOutcome {
 }
 
 /**
- * Handles moderator and owner commands for inspecting, registering, updating, resetting, and syncing students.
+ * Handles moderator and owner commands for inspecting, registering, updating, resetting, and syncing members.
  */
 export class StudentController {
-  private static readonly DISCORD_MISSING_PERMISSIONS_CODE = 50013;
   private appConfig: AppConfig;
   private readonly studentRepository: StudentRepository;
   private readonly resourceResolver: GuildResourceResolver;
@@ -111,10 +109,10 @@ export class StudentController {
   }
 
   /**
-   * Looks up a student record by @mention, Discord ID, or Student ID.
+   * Looks up a student or staff record by @mention, Discord ID, or Student ID.
    *
    * @param target unified target identifier string
-   * @returns a StudentActionOutcome containing the student details if found
+   * @returns a StudentActionOutcome containing the stored member details if found
    */
   public lookupStudent(target: string): StudentActionOutcome {
     const student = this.resolveStudentByTarget(target);
@@ -127,12 +125,15 @@ export class StudentController {
       };
     }
 
+    const prefixOverride = this.resolvePrefixFromRecord(student);
     const nickname = InputValidator.formatNickname(
       student.fullName,
       student.studentId,
       this.appConfig.bot,
+      prefixOverride ?? undefined,
     );
     const rounds = this.formatActiveRounds(student);
+    const staffSummary = this.formatStaffTierLabel(student);
 
     return {
       success: true,
@@ -141,7 +142,8 @@ export class StudentController {
         `Discord User: <@${student.discordId}> (\`${student.discordId}\`)`,
         `Full Name: \`${student.fullName}\``,
         `Computed Nickname: \`${nickname}\``,
-        `Verified: \`${student.isVerified ? "Yes" : "No"}\``,
+        `Role Tier: \`${staffSummary}\``,
+        `Verified Candidate: \`${student.isVerified ? "Yes" : "No"}\``,
         `Active Rounds: ${rounds}`,
       ].join("\n"),
       student,
@@ -157,7 +159,7 @@ export class StudentController {
    * @returns a StudentActionOutcome describing the applied state
    */
   public async registerStudentManually(
-    member: Parameters<typeof MemberMutationHelper.getPreservedRoleIds>[0],
+    member: GuildMember,
     rawFullName: string,
     rawStudentId: string,
   ): Promise<StudentActionOutcome> {
@@ -249,7 +251,7 @@ export class StudentController {
   }
 
   /**
-   * Synchronizes verified SQLite student records (nickname and roles) to Discord.
+   * Synchronizes active SQLite candidate and staff records (nicknames and roles) to Discord.
    *
    * @param guild the target Discord guild
    * @param target optional unified target string (@mention, Discord ID, or Student ID)
@@ -265,7 +267,7 @@ export class StudentController {
         success: false,
         title: "Student Not Found",
         description:
-          "No verified student record matched the provided user or Student ID.",
+          "No active student or staff record matched the provided user or Student ID.",
         updatedCount: 0,
         skippedCount: 0,
         failedMembers: [],
@@ -295,7 +297,7 @@ export class StudentController {
     return {
       success: true,
       title: "Database Sync Complete",
-      description: `Reconciled \`${String(targets.length)}\` verified student(s) from SQLite to Discord.\n\nUpdated: \`${String(updatedCount)}\`\nAlready In Sync: \`${String(skippedCount)}\`${failedSummary}`,
+      description: `Reconciled \`${String(targets.length)}\` active record(s) between SQLite and Discord.\n\nUpdated: \`${String(updatedCount)}\`\nAlready In Sync: \`${String(skippedCount)}\`${failedSummary}`,
       updatedCount,
       skippedCount,
       failedMembers,
@@ -311,7 +313,7 @@ export class StudentController {
    * @returns a StudentActionOutcome
    */
   private async executeManualRegistration(
-    member: Parameters<typeof MemberMutationHelper.getPreservedRoleIds>[0],
+    member: GuildMember,
     rawFullName: string,
     rawStudentId: string,
   ): Promise<StudentActionOutcome> {
@@ -349,36 +351,12 @@ export class StudentController {
 
     const staffTier = this.resourceResolver.resolveStaffTier(member);
     if (staffTier !== null) {
-      const staffPrefix =
-        this.resourceResolver.getPrefixForStaffTier(staffTier);
-      const staffNickname = InputValidator.formatNickname(
-        validation.formattedFullName,
-        validation.studentId,
-        this.appConfig.bot,
-        staffPrefix,
-      );
-      const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+      return await this.registerPreAssignedStaff(
         member,
-        this.appConfig.permissions,
-        "KEEP",
+        validation.studentId,
+        validation.formattedFullName,
+        staffTier,
       );
-      const hierarchyWarning =
-        await MemberMutationHelper.applyMemberNicknameAndRoles(
-          member,
-          staffNickname,
-          roleIds,
-          "StudentController",
-        );
-      this.studentRepository.deleteByDiscordId(member.id);
-      const warningNote = hierarchyWarning
-        ? `\n\nNote: ${hierarchyWarning}`
-        : "";
-
-      return {
-        success: true,
-        title: "Staff Registered Manually",
-        description: `Updated <@${member.id}> as staff successfully.\n\nFull Name: \`${validation.formattedFullName}\`\nNickname: \`${staffNickname}\`\nStudent ID: \`${validation.studentId}\`${warningNote}`,
-      };
     }
 
     const student = this.buildManualStudentRecord(
@@ -412,10 +390,70 @@ export class StudentController {
   }
 
   /**
+   * Persists and applies staff profile when /student register targets a member with mod or sup roles.
+   *
+   * @param member the target Discord guild member
+   * @param studentId validated uppercase student ID
+   * @param fullName normalized Title Case full name
+   * @param staffTier active staff tier on Discord
+   * @returns a StudentActionOutcome
+   */
+  private async registerPreAssignedStaff(
+    member: GuildMember,
+    studentId: string,
+    fullName: string,
+    staffTier: "MOD" | "SUP",
+  ): Promise<StudentActionOutcome> {
+    const staffPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
+    const staffNickname = InputValidator.formatNickname(
+      fullName,
+      studentId,
+      this.appConfig.bot,
+      staffPrefix,
+    );
+    const staffRecord: Student = {
+      studentId,
+      fullName,
+      discordId: member.id,
+      isVerified: false,
+      isRound1: false,
+      isRound2: false,
+      isRound3: false,
+      isModerator: member.roles.cache.has(
+        this.resourceResolver.getModeratorRoleId(),
+      ),
+      isSupporter: member.roles.cache.has(
+        this.resourceResolver.getSupporterRoleId(),
+      ),
+    };
+    const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+      member,
+      this.appConfig.permissions,
+      "KEEP",
+    );
+    const hierarchyWarning =
+      await MemberMutationHelper.applyMemberNicknameAndRoles(
+        member,
+        staffNickname,
+        roleIds,
+        "StudentController",
+      );
+    this.studentRepository.upsertStudent(staffRecord);
+    const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : "";
+
+    return {
+      success: true,
+      title: "Staff Registered Manually",
+      description: `Updated <@${member.id}> as staff successfully.\n\nFull Name: \`${fullName}\`\nNickname: \`${staffNickname}\`\nStudent ID: \`${studentId}\`${warningNote}`,
+      student: staffRecord,
+    };
+  }
+
+  /**
    * Executes independent round and identity updates on SQLite and Discord under member lock.
    *
    * @param guild the target Discord guild
-   * @param existingStudent the existing SQLite student record
+   * @param existingStudent the existing SQLite record
    * @param updates the requested update fields and explicit round booleans
    * @returns a StudentActionOutcome
    */
@@ -451,22 +489,31 @@ export class StudentController {
       };
     }
 
+    const isStaff = existingStudent.isModerator || existingStudent.isSupporter;
     const updatedStudent: Student = {
       studentId: validation.studentId,
       fullName: validation.formattedFullName,
       discordId: existingStudent.discordId,
-      isVerified: existingStudent.isVerified,
-      isRound1: updates.isRound1,
-      isRound2: updates.isRound2,
-      isRound3: updates.isRound3,
+      isVerified: isStaff ? false : existingStudent.isVerified,
+      isRound1: isStaff ? false : updates.isRound1,
+      isRound2: isStaff ? false : updates.isRound2,
+      isRound3: isStaff ? false : updates.isRound3,
       isModerator: existingStudent.isModerator,
       isSupporter: existingStudent.isSupporter,
     };
 
+    const prefixOverride = this.resolvePrefixFromRecord(updatedStudent);
+    const effectiveNickname = InputValidator.formatNickname(
+      updatedStudent.fullName,
+      updatedStudent.studentId,
+      this.appConfig.bot,
+      prefixOverride ?? undefined,
+    );
+
     const discordNote = await this.applyUpdatedMemberState(
       guild,
       updatedStudent,
-      validation.nickname,
+      effectiveNickname,
     );
 
     if (existingStudent.studentId !== updatedStudent.studentId) {
@@ -482,7 +529,7 @@ export class StudentController {
         `Updated <@${updatedStudent.discordId}> successfully.`,
         "",
         `Full Name: \`${updatedStudent.fullName}\``,
-        `Nickname: \`${validation.nickname}\``,
+        `Nickname: \`${effectiveNickname}\``,
         `Student ID: \`${updatedStudent.studentId}\``,
         `Active Rounds: ${activeRounds}`,
         ...(discordNote ? ["", `Note: ${discordNote}`] : []),
@@ -492,7 +539,7 @@ export class StudentController {
   }
 
   /**
-   * Applies updated nickname and roles to Discord if the student is currently in the guild.
+   * Applies updated nickname and roles to Discord if the member is currently in the guild.
    *
    * @param guild the target Discord guild
    * @param student the updated Student entity
@@ -511,11 +558,19 @@ export class StudentController {
       return "Member is not currently in the server; changes are saved in SQLite and will apply on rejoin or sync.";
     }
 
-    const roleIds = MemberMutationHelper.buildDesiredRoleIds(
-      member,
-      student,
-      this.appConfig.permissions,
-    );
+    const roleIds =
+      student.isModerator || student.isSupporter
+        ? MemberMutationHelper.getRoleIdsForStaffTransition(
+            member,
+            this.appConfig.permissions,
+            "KEEP",
+          )
+        : MemberMutationHelper.buildDesiredRoleIds(
+            member,
+            student,
+            this.appConfig.permissions,
+          );
+
     return await MemberMutationHelper.applyMemberNicknameAndRoles(
       member,
       nickname,
@@ -597,27 +652,12 @@ export class StudentController {
       return {
         success: true,
         title: "Staff Reset Complete",
-        description: `Cleared staff and recruitment roles, removed any SQLite candidate record, and reset the nickname for <@${member.id}>. The user must \`/verify\` again to re-enter.${warningNote}`,
+        description: `Cleared staff and recruitment roles, removed the SQLite record, and reset the nickname for <@${member.id}>. The user must \`/verify\` again to re-enter.${warningNote}`,
       };
     }
 
-    const staffTier = targetRole === "moderator" ? "MOD" : "SUP";
-    const targetPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
     const existingStudent = this.studentRepository.findByDiscordId(member.id);
-    const staffNickname = existingStudent
-      ? InputValidator.formatNickname(
-          existingStudent.fullName,
-          existingStudent.studentId,
-          this.appConfig.bot,
-          targetPrefix,
-        )
-      : InputValidator.rewriteStandardizedNicknamePrefix(
-          member.nickname,
-          this.appConfig.bot,
-          targetPrefix,
-        );
-
-    if (staffNickname === null) {
+    if (!existingStudent) {
       return {
         success: false,
         title: "Verification Required",
@@ -625,7 +665,25 @@ export class StudentController {
       };
     }
 
-    this.studentRepository.deleteByDiscordId(member.id);
+    const staffTier = targetRole === "moderator" ? "MOD" : "SUP";
+    const targetPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
+    const staffNickname = InputValidator.formatNickname(
+      existingStudent.fullName,
+      existingStudent.studentId,
+      this.appConfig.bot,
+      targetPrefix,
+    );
+
+    const updatedRecord: Student = {
+      ...existingStudent,
+      isVerified: false,
+      isRound1: false,
+      isRound2: false,
+      isRound3: false,
+      isModerator: targetRole === "moderator",
+      isSupporter: targetRole === "supporter",
+    };
+
     const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
       member,
       this.appConfig.permissions,
@@ -638,6 +696,8 @@ export class StudentController {
         roleIds,
         "StudentController",
       );
+
+    this.studentRepository.upsertStudent(updatedRecord);
     const targetRoleId =
       staffTier === "MOD"
         ? this.resourceResolver.getModeratorRoleId()
@@ -647,12 +707,13 @@ export class StudentController {
     return {
       success: true,
       title: "Staff Role Updated",
-      description: `Assigned <@&${targetRoleId}> to <@${member.id}>, removed candidate roles and SQLite record, and updated nickname to \`${staffNickname}\`.${warningNote}`,
+      description: `Assigned <@&${targetRoleId}> to <@${member.id}>, cleared candidate roles, and updated nickname to \`${staffNickname}\`.${warningNote}`,
+      student: updatedRecord,
     };
   }
 
   /**
-   * Resolves the list of verified students targeted by syncStudentsToDiscord.
+   * Resolves the list of active candidate and staff records targeted by syncStudentsToDiscord.
    *
    * @param target optional unified target string
    * @returns array of Student records or null if a specific target was not found
@@ -660,16 +721,21 @@ export class StudentController {
   private resolveSyncTargets(target?: string | null): Student[] | null {
     if (target && target.trim().length > 0) {
       const matched = this.resolveStudentByTarget(target);
-      return matched?.isVerified ? [matched] : null;
+      if (!matched) {
+        return null;
+      }
+      const isActive =
+        matched.isVerified || matched.isModerator || matched.isSupporter;
+      return isActive ? [matched] : null;
     }
-    return this.studentRepository.listAllVerifiedStudents();
+    return this.studentRepository.listAllActiveMembers();
   }
 
   /**
-   * Reconciles a single student's SQLite state to Discord under per-member lock.
+   * Reconciles a single SQLite record with Discord under per-member lock.
    *
    * @param guild the target Discord guild
-   * @param student the student record to reconcile
+   * @param student the stored Student record
    * @returns 'UPDATED', 'SKIPPED', or a descriptive failure label
    */
   private async syncSingleStudent(
@@ -687,10 +753,10 @@ export class StudentController {
   }
 
   /**
-   * Compares and applies a student's expected Discord nickname and roles.
+   * Reconciles a stored candidate or staff member with live Discord staff roles and nicknames.
    *
    * @param guild the target Discord guild
-   * @param student the student record to apply
+   * @param student the stored Student record
    * @returns 'UPDATED', 'SKIPPED', or a descriptive failure label
    */
   private async reconcileStudentMember(
@@ -704,6 +770,26 @@ export class StudentController {
       return `${student.studentId} (not in server)`;
     }
 
+    const liveStaffTier = this.resourceResolver.resolveStaffTier(member);
+    if (liveStaffTier !== null) {
+      return await this.reconcileStaffMember(member, student, liveStaffTier);
+    }
+
+    if (student.isModerator || student.isSupporter) {
+      this.studentRepository.deleteByDiscordId(member.id);
+      const preservedRoles = MemberMutationHelper.getPreservedRoleIds(
+        member,
+        this.appConfig.permissions,
+      );
+      await MemberMutationHelper.applyMemberNicknameAndRoles(
+        member,
+        null,
+        preservedRoles,
+        "StudentController",
+      );
+      return "UPDATED";
+    }
+
     const expectedNickname = InputValidator.formatNickname(
       student.fullName,
       student.studentId,
@@ -714,77 +800,109 @@ export class StudentController {
       student,
       this.appConfig.permissions,
     );
+    return await this.applyReconciledProfileIfChanged(
+      member,
+      expectedNickname,
+      desiredRoleIds,
+    );
+  }
+
+  /**
+   * Synchronizes offline staff promotions or prefix changes between Discord and SQLite.
+   *
+   * @param member the live Discord guild member
+   * @param student the stored SQLite record
+   * @param staffTier active staff tier on Discord
+   * @returns 'UPDATED' or 'SKIPPED'
+   */
+  private async reconcileStaffMember(
+    member: GuildMember,
+    student: Student,
+    staffTier: "MOD" | "SUP",
+  ): Promise<string> {
+    const hasMod = member.roles.cache.has(
+      this.resourceResolver.getModeratorRoleId(),
+    );
+    const hasSup = member.roles.cache.has(
+      this.resourceResolver.getSupporterRoleId(),
+    );
+    const dbMatches =
+      !student.isVerified &&
+      !student.isRound1 &&
+      !student.isRound2 &&
+      !student.isRound3 &&
+      student.isModerator === hasMod &&
+      student.isSupporter === hasSup;
+
+    if (!dbMatches) {
+      this.studentRepository.upsertStudent({
+        ...student,
+        isVerified: false,
+        isRound1: false,
+        isRound2: false,
+        isRound3: false,
+        isModerator: hasMod,
+        isSupporter: hasSup,
+      });
+    }
+
+    const staffPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
+    const expectedNickname = InputValidator.formatNickname(
+      student.fullName,
+      student.studentId,
+      this.appConfig.bot,
+      staffPrefix,
+    );
+    const desiredRoleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+      member,
+      this.appConfig.permissions,
+      "KEEP",
+    );
+
+    const profileOutcome = await this.applyReconciledProfileIfChanged(
+      member,
+      expectedNickname,
+      desiredRoleIds,
+    );
+    return !dbMatches || profileOutcome === "UPDATED" ? "UPDATED" : "SKIPPED";
+  }
+
+  /**
+   * Compares current Discord nickname and roles against desired state and mutates only if changed.
+   *
+   * @param member the target Discord guild member
+   * @param expectedNickname desired server nickname
+   * @param desiredRoleIds desired Discord role Snowflake IDs
+   * @returns 'UPDATED' or 'SKIPPED'
+   */
+  private async applyReconciledProfileIfChanged(
+    member: GuildMember,
+    expectedNickname: string,
+    desiredRoleIds: string[],
+  ): Promise<string> {
     const currentRoleIds = new Set(
       member.roles.cache
-        .filter((role) => role.id !== guild.id)
+        .filter((role) => role.id !== member.guild.id)
         .map((role) => role.id),
     );
     const rolesMatch =
       desiredRoleIds.length === currentRoleIds.size &&
       desiredRoleIds.every((roleId) => currentRoleIds.has(roleId));
     const nicknameMatches =
-      member.nickname === expectedNickname || member.id === guild.ownerId;
+      member.nickname === expectedNickname ||
+      member.id === member.guild.ownerId;
 
     if (rolesMatch && nicknameMatches) {
       return "SKIPPED";
     }
 
-    try {
-      await member.edit({
-        ...(member.id === guild.ownerId ? {} : { nick: expectedNickname }),
-        roles: desiredRoleIds,
-      });
-      return "UPDATED";
-    } catch (error) {
-      return await this.handleSyncEditError(
-        member,
-        student,
-        desiredRoleIds,
-        rolesMatch,
-        error,
-      );
-    }
-  }
-
-  /**
-   * Handles Discord API errors during sync, retrying role-only edits on 50013 when roles differ.
-   *
-   * @param member the target guild member
-   * @param student the student record being synced
-   * @param desiredRoleIds target role ID array
-   * @param rolesMatch whether Discord roles already match desiredRoleIds
-   * @param error the caught edit error
-   * @returns 'UPDATED' if role fallback succeeded, or studentId on failure
-   */
-  private async handleSyncEditError(
-    member: Parameters<typeof MemberMutationHelper.getPreservedRoleIds>[0],
-    student: Student,
-    desiredRoleIds: string[],
-    rolesMatch: boolean,
-    error: unknown,
-  ): Promise<string> {
-    if (
-      error instanceof DiscordAPIError &&
-      error.code === StudentController.DISCORD_MISSING_PERMISSIONS_CODE &&
-      !rolesMatch
-    ) {
-      try {
-        await member.edit({ roles: desiredRoleIds });
-        return "UPDATED";
-      } catch (fallbackError) {
-        Logger.warn(
-          "StudentController",
-          `Fallback role sync failed for ${student.studentId}: ${String(fallbackError)}`,
-        );
-        return student.studentId;
-      }
-    }
-
-    Logger.warn(
+    await MemberMutationHelper.applyMemberNicknameAndRoles(
+      member,
+      expectedNickname,
+      desiredRoleIds,
       "StudentController",
-      `Failed syncing ${student.studentId} to Discord: ${String(error)}`,
     );
-    return student.studentId;
+    return "UPDATED";
   }
 
   /**
@@ -822,6 +940,41 @@ export class StudentController {
       isModerator: false,
       isSupporter: false,
     };
+  }
+
+  /**
+   * Resolves the nickname prefix override from stored staff flags when present.
+   *
+   * @param student the stored Student entity
+   * @returns moderatorPrefix, supporterPrefix, or null for candidates
+   */
+  private resolvePrefixFromRecord(student: Student): string | null {
+    if (student.isModerator) {
+      return this.appConfig.bot.moderatorPrefix;
+    }
+    if (student.isSupporter) {
+      return this.appConfig.bot.supporterPrefix;
+    }
+    return null;
+  }
+
+  /**
+   * Formats a human-readable role tier label from stored flags.
+   *
+   * @param student the stored Student entity
+   * @returns role tier summary label
+   */
+  private formatStaffTierLabel(student: Student): string {
+    if (student.isModerator && student.isSupporter) {
+      return "Moderator + Supporter";
+    }
+    if (student.isModerator) {
+      return "Moderator";
+    }
+    if (student.isSupporter) {
+      return "Supporter";
+    }
+    return "Candidate";
   }
 
   /**

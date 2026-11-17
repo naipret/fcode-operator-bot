@@ -211,82 +211,6 @@ function formatNickname(
 }
 
 /**
- * Escapes literal regular expression metacharacters in a template or prefix string.
- *
- * @param value raw string segment
- * @returns escaped regular expression pattern string
- */
-function escapeRegExpLiteral(value: string): string {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Rewrites the prefix of an existing standardized nickname while preserving name and student ID.
- *
- * @param currentNickname the member's current guild nickname
- * @param botConfig the bot configuration section from config.yaml
- * @param nextPrefix the target prefix (for example, MOD, SUP, or clubCohortPrefix)
- * @returns the updated nickname, or null if currentNickname is not standardized
- */
-function rewriteStandardizedNicknamePrefix(
-  currentNickname: string | null,
-  botConfig: BotConfig,
-  nextPrefix: string,
-): string | null {
-  if (!currentNickname) {
-    return null;
-  }
-
-  const knownPrefixes = Array.from(
-    new Set([
-      botConfig.clubCohortPrefix,
-      botConfig.moderatorPrefix,
-      botConfig.supporterPrefix,
-    ]),
-  ).map((prefix) => escapeRegExpLiteral(prefix));
-
-  const templatePattern = escapeRegExpLiteral(botConfig.nicknameTemplate)
-    .replaceAll("\\{prefix\\}", `(${knownPrefixes.join("|")})`)
-    .replaceAll("\\{name\\}", "([A-Za-z]{2,})")
-    .replaceAll("\\{studentId\\}", "([A-Za-z0-9]+)");
-
-  const match = new RegExp(`^${templatePattern}$`).exec(currentNickname.trim());
-  if (!match?.[2] || !match[3]) {
-    return null;
-  }
-
-  const normalizedStudentId = match[3].toUpperCase();
-  if (!new RegExp(botConfig.studentIdRegex).test(normalizedStudentId)) {
-    return null;
-  }
-
-  return botConfig.nicknameTemplate
-    .replaceAll("{prefix}", nextPrefix)
-    .replaceAll("{name}", match[2])
-    .replaceAll("{studentId}", normalizedStudentId);
-}
-
-/**
- * Checks whether a guild nickname conforms to the configured standardized nickname template.
- *
- * @param currentNickname the member's current guild nickname
- * @param botConfig the bot configuration section from config.yaml
- * @returns true when the nickname matches any configured prefix and student ID format
- */
-function hasStandardizedNickname(
-  currentNickname: string | null,
-  botConfig: BotConfig,
-): boolean {
-  return (
-    rewriteStandardizedNicknamePrefix(
-      currentNickname,
-      botConfig,
-      botConfig.clubCohortPrefix,
-    ) !== null
-  );
-}
-
-/**
  * Validates full name, student identifier, cohort eligibility, and Discord's 32-character limit.
  *
  * @param rawFullName the raw full name input
@@ -431,8 +355,6 @@ export const InputValidator = {
   validateFullName,
   validateStudentId,
   formatNickname,
-  rewriteStandardizedNicknamePrefix,
-  hasStandardizedNickname,
   buildValidatedNickname,
   interpolateConfigText,
   parseTargetTokens,
