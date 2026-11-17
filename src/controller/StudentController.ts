@@ -522,6 +522,14 @@ export class StudentController {
     this.studentRepository.upsertStudent(updatedStudent);
 
     const activeRounds = this.formatActiveRounds(updatedStudent);
+    const staffRoundNote =
+      isStaff && (updates.isRound1 || updates.isRound2 || updates.isRound3)
+        ? "Staff role flags are managed by `/system staff`; candidate round flags were kept disabled."
+        : null;
+    const notes = [discordNote, staffRoundNote].filter(
+      (entry): entry is string => entry !== null,
+    );
+
     return {
       success: true,
       title: "Student Updated",
@@ -532,7 +540,9 @@ export class StudentController {
         `Nickname: \`${effectiveNickname}\``,
         `Student ID: \`${updatedStudent.studentId}\``,
         `Active Rounds: ${activeRounds}`,
-        ...(discordNote ? ["", `Note: ${discordNote}`] : []),
+        ...(notes.length > 0
+          ? ["", ...notes.map((note) => `Note: ${note}`)]
+          : []),
       ].join("\n"),
       student: updatedStudent,
     };

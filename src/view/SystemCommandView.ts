@@ -113,7 +113,7 @@ export class SystemCommandView {
             option
               .setName("target")
               .setDescription(
-                "Optional @user or Student ID (omit to sync all verified students).",
+                "Optional @user or Student ID (omit to sync all active student and staff records).",
               )
               .setRequired(false),
           ),

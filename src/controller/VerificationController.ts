@@ -55,6 +55,29 @@ export class VerificationController {
   }
 
   /**
+   * Synchronously checks whether a member has an active restorable candidate or staff record.
+   *
+   * @param member the interacting Discord guild member
+   * @returns true if checkAndRestoreIfVerified will resolve an active or restorable state
+   */
+  public hasRestorableRecord(member: GuildMember): boolean {
+    const existingStudent = this.studentRepository.findByDiscordId(member.id);
+    if (!existingStudent) {
+      return false;
+    }
+
+    if (existingStudent.isModerator || existingStudent.isSupporter) {
+      if (this.resourceResolver.resolveStaffTier(member) === null) {
+        this.studentRepository.deleteByDiscordId(member.id);
+        return false;
+      }
+      return true;
+    }
+
+    return existingStudent.isVerified;
+  }
+
+  /**
    * Checks whether the interacting user already has a verified candidate or active staff record.
    *
    * @param member the Discord guild member initiating verification

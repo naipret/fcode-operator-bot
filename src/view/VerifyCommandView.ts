@@ -10,7 +10,6 @@ import {
 import type { AppConfig } from "../config/ConfigSchema.js";
 import type { VerificationController } from "../controller/VerificationController.js";
 import type { VerificationOutcome } from "../model/Student.js";
-import type { StudentRepository } from "../repository/StudentRepository.js";
 import { EmbedFactory } from "./EmbedFactory.js";
 import {
   buildStudentInputModal,
@@ -37,23 +36,19 @@ const VERIFY_BUTTON_MODAL_ID = "fcode-verify-button-modal";
  */
 export class VerifyCommandView {
   private appConfig: AppConfig;
-  private readonly studentRepository: StudentRepository;
   private readonly verificationController: VerificationController;
 
   /**
-   * Creates a VerifyCommandView bound to controller, repository, and config.
+   * Creates a VerifyCommandView bound to controller and config.
    *
    * @param appConfig the validated application configuration
-   * @param studentRepository the SQLite student repository
    * @param verificationController the verification business controller
    */
   public constructor(
     appConfig: AppConfig,
-    studentRepository: StudentRepository,
     verificationController: VerificationController,
   ) {
     this.appConfig = appConfig;
-    this.studentRepository = studentRepository;
     this.verificationController = verificationController;
   }
 
@@ -236,8 +231,7 @@ export class VerifyCommandView {
     member: GuildMember,
     isEphemeral: boolean,
   ): Promise<void> {
-    const existingRecord = this.studentRepository.findByDiscordId(member.id);
-    if (existingRecord?.isVerified) {
+    if (this.verificationController.hasRestorableRecord(member)) {
       await interaction.deferReply(
         isEphemeral ? { flags: MessageFlags.Ephemeral } : undefined,
       );

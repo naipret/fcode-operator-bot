@@ -464,7 +464,6 @@ async function bootstrap(): Promise<void> {
 
   const verifyView = new VerifyCommandView(
     activeConfig,
-    studentRepository,
     verificationController,
   );
   const studentView = new StudentCommandView(
