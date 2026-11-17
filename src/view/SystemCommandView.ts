@@ -97,7 +97,7 @@ export class SystemCommandView {
             option
               .setName("panel-channel")
               .setDescription(
-                "Optional text channel to post or update the verification panel.",
+                "Optional text channel to post a new verification panel.",
               )
               .addChannelTypes(ChannelType.GuildText)
               .setRequired(false),
@@ -288,25 +288,18 @@ export class SystemCommandView {
           .setStyle(ButtonStyle.Primary),
       );
 
-      const recentMessages = await panelChannel.messages.fetch({ limit: 20 });
-      const existingPanel = recentMessages.find(
-        (message) =>
-          message.author.id === interaction.client.user.id &&
-          message.components.length > 0,
-      );
-
-      if (existingPanel) {
-        await existingPanel.edit({
-          embeds: [panelEmbed],
-          components: [panelRow],
-        });
-        panelNote = `\nVerification panel updated in <#${panelChannel.id}>.`;
-      } else {
+      try {
         await panelChannel.send({
           embeds: [panelEmbed],
           components: [panelRow],
         });
         panelNote = `\nVerification panel posted in <#${panelChannel.id}>.`;
+      } catch (error) {
+        Logger.warn(
+          "SystemCommandView",
+          `Failed posting verification panel to ${panelChannel.id}: ${String(error)}`,
+        );
+        panelNote = `\nWarning: Could not post verification panel in <#${panelChannel.id}>. Check bot channel permissions.`;
       }
     }
 

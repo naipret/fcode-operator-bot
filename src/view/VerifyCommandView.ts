@@ -243,6 +243,15 @@ export class VerifyCommandView {
         });
         return;
       }
+      await interaction.editReply({
+        embeds: [
+          EmbedFactory.buildWarningEmbed(
+            "Verification Status Changed",
+            "Your account state changed while checking your record. Please run verification again.",
+          ),
+        ],
+      });
+      return;
     }
 
     if (!this.verificationController.isVerificationGateEnabled()) {

@@ -6,6 +6,7 @@ import {
   type ChatInputCommandInteraction,
   type EmbedBuilder,
   type Guild,
+  MessageFlags,
   SlashCommandBuilder,
   UserSelectMenuBuilder,
   type UserSelectMenuInteraction,
@@ -273,15 +274,23 @@ export class RoundCommandView {
     }
 
     const token = interaction.customId.slice(ROUND_CONFIRM_PREFIX.length);
-    const pending = this.getValidPendingSession(token, interaction.user.id);
-    if (!pending) {
+    const session = this.resolvePendingSession(token, interaction.user.id);
+    if (session.status === "NOT_OWNER") {
+      await this.replyUnauthorizedPromptInteraction(interaction);
+      return;
+    }
+    if (session.status === "EXPIRED") {
       await this.renderExpiredSession(interaction);
       return;
     }
 
     this.pendingOperations.delete(token);
     await interaction.deferUpdate();
-    await this.executePendingOperation(interaction, interaction.guild, pending);
+    await this.executePendingOperation(
+      interaction,
+      interaction.guild,
+      session.pending,
+    );
   }
 
   /**
@@ -302,12 +311,17 @@ export class RoundCommandView {
     const token = interaction.customId.slice(
       ROUND_EXCLUDE_SELECT_PREFIX.length,
     );
-    const pending = this.getValidPendingSession(token, interaction.user.id);
-    if (!pending) {
+    const session = this.resolvePendingSession(token, interaction.user.id);
+    if (session.status === "NOT_OWNER") {
+      await this.replyUnauthorizedPromptInteraction(interaction);
+      return;
+    }
+    if (session.status === "EXPIRED") {
       await this.renderExpiredSession(interaction);
       return;
     }
 
+    const pending = session.pending;
     const selectedDiscordIds = Array.from(interaction.users.keys());
     pending.excludeInput = selectedDiscordIds.map((id) => `<@${id}>`).join(" ");
     pending.excludedCount = selectedDiscordIds.length;
@@ -348,16 +362,13 @@ export class RoundCommandView {
     interaction: ButtonInteraction,
   ): Promise<void> {
     const token = interaction.customId.slice(ROUND_CANCEL_PREFIX.length);
-    const pending = this.pendingOperations.get(token);
-    if (pending?.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        embeds: [
-          EmbedFactory.buildErrorEmbed(
-            "Unauthorized or Expired",
-            "Only the command invoker can cancel this pending operation.",
-          ),
-        ],
-      });
+    const session = this.resolvePendingSession(token, interaction.user.id);
+    if (session.status === "NOT_OWNER") {
+      await this.replyUnauthorizedPromptInteraction(interaction);
+      return;
+    }
+    if (session.status === "EXPIRED") {
+      await this.renderExpiredSession(interaction);
       return;
     }
 
@@ -718,21 +729,47 @@ export class RoundCommandView {
   }
 
   /**
-   * Retrieves a pending operation if it belongs to callerId and has not expired.
+   * Resolves a pending operation and distinguishes unauthorized clicks from expired sessions.
    *
    * @param token the session token
    * @param callerId the interacting Discord user ID
-   * @returns the PendingRoundOperation or null when invalid or expired
+   * @returns OK with pending state, NOT_OWNER, or EXPIRED
    */
-  private getValidPendingSession(
+  private resolvePendingSession(
     token: string,
     callerId: string,
-  ): PendingRoundOperation | null {
+  ):
+    | { status: "OK"; pending: PendingRoundOperation }
+    | { status: "NOT_OWNER" }
+    | { status: "EXPIRED" } {
     const pending = this.pendingOperations.get(token);
-    if (pending?.ownerId !== callerId || pending.expiresAtMs < Date.now()) {
-      return null;
+    if (!pending || pending.expiresAtMs < Date.now()) {
+      this.pendingOperations.delete(token);
+      return { status: "EXPIRED" };
     }
-    return pending;
+    if (pending.ownerId !== callerId) {
+      return { status: "NOT_OWNER" };
+    }
+    return { status: "OK", pending };
+  }
+
+  /**
+   * Sends an ephemeral warning when another user clicks a pending /round prompt component.
+   *
+   * @param interaction the button or select menu interaction
+   */
+  private async replyUnauthorizedPromptInteraction(
+    interaction: ButtonInteraction | UserSelectMenuInteraction,
+  ): Promise<void> {
+    await interaction.reply({
+      flags: MessageFlags.Ephemeral,
+      embeds: [
+        EmbedFactory.buildErrorEmbed(
+          "Unauthorized",
+          "Only the command invoker can interact with this confirmation prompt.",
+        ),
+      ],
+    });
   }
 
   /**
