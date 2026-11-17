@@ -24,6 +24,7 @@ export class DatabaseClient {
     this.database = new DatabaseSync(databasePath);
     this.configurePragmas(databasePath === ':memory:');
     this.initializeSchema();
+    this.runSchemaMigrations();
   }
 
   /**
@@ -76,10 +77,10 @@ export class DatabaseClient {
     }
 
     const now = new Date();
-    const pad = (value: number): string => String(value).padStart(2, '0');
-    const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const pad = (value: number, length = 2): string => String(value).padStart(length, '0');
+    const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${pad(now.getMilliseconds(), 3)}`;
     const filePrefix = `recruitment-${cohortPrefix.toLowerCase()}-`;
-    const backupPath = path.join(resolvedDir, `${filePrefix}${timestamp}.db`);
+    const backupPath = this.resolveUniqueBackupPath(resolvedDir, filePrefix, timestamp);
     const escapedPath = backupPath.replaceAll("'", "''");
 
     this.database.exec(`VACUUM INTO '${escapedPath}';`);
@@ -137,5 +138,49 @@ export class DatabaseClient {
         setting_value TEXT NOT NULL
       );
     `);
+  }
+
+  /**
+   * Resolves a unique backup file path so concurrent backups in the same millisecond never collide.
+   *
+   * @param directory target backup directory
+   * @param filePrefix cohort-scoped filename prefix
+   * @param timestamp millisecond-precision timestamp string
+   * @returns non-existent destination file path
+   */
+  private resolveUniqueBackupPath(
+    directory: string,
+    filePrefix: string,
+    timestamp: string,
+  ): string {
+    const baseCandidate = path.join(directory, `${filePrefix}${timestamp}.db`);
+    if (!fs.existsSync(baseCandidate)) {
+      return baseCandidate;
+    }
+
+    let suffix = 1;
+    let candidate = path.join(directory, `${filePrefix}${timestamp}-${suffix}.db`);
+    while (fs.existsSync(candidate)) {
+      suffix += 1;
+      candidate = path.join(directory, `${filePrefix}${timestamp}-${suffix}.db`);
+    }
+    return candidate;
+  }
+
+  /**
+   * Applies forward-only SQLite schema migrations tracked via PRAGMA user_version.
+   */
+  private runSchemaMigrations(): void {
+    const versionRow = this.database.prepare('PRAGMA user_version').get() as
+      { user_version: number } | undefined;
+    const currentVersion = versionRow?.user_version ?? 0;
+
+    if (currentVersion >= 1) {
+      return;
+    }
+
+    this.runInTransaction(() => {
+      this.database.exec('PRAGMA user_version = 1;');
+    });
   }
 }
