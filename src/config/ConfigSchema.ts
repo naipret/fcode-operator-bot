@@ -21,6 +21,8 @@ export const appConfigSchema = z.object({
   bot: z
     .object({
       clubCohortPrefix: z.string().trim().min(1).max(8),
+      moderatorPrefix: z.string().trim().min(1).max(8),
+      supporterPrefix: z.string().trim().min(1).max(8),
       maxNicknameLength: z.number().int().min(16).max(32),
       allowedCohorts: z.array(z.string().regex(/^\d{2}$/)).min(1),
       allowedStudentIdPrefixes: z
@@ -68,6 +70,7 @@ export const appConfigSchema = z.object({
   permissions: z.object({
     ownerRoleId: snowflakeSchema,
     moderatorRoleId: snowflakeSchema,
+    supporterRoleId: snowflakeSchema,
     verifiedRoleId: snowflakeSchema,
     roundRoleIds: z.object({
       round1: snowflakeSchema,

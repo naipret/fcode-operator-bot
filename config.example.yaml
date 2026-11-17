@@ -1,5 +1,7 @@
 bot:
   clubCohortPrefix: "F22"
+  moderatorPrefix: "MOD"
+  supporterPrefix: "SUP"
   maxNicknameLength: 32
   allowedCohorts:
     - "20"
@@ -33,6 +35,7 @@ verification:
 permissions:
   ownerRoleId: ""
   moderatorRoleId: ""
+  supporterRoleId: ""
   verifiedRoleId: ""
   roundRoleIds:
     round1: ""
