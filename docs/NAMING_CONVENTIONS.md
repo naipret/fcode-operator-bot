@@ -11,7 +11,7 @@ This specification defines identifier casing, architectural suffixes, method pre
 | Directory              | `lowercase`        | Single domain layer noun                       | `config`, `model`, `repository`, `controller`, `view`, `util`  |
 | File                   | `PascalCase`       | Matches primary exported class or module       | `VerificationController.ts`, `InputValidator.ts`               |
 | Class and Interface    | `PascalCase`       | Singular noun phrase with architectural suffix | `StudentRepository`, `VerificationController`, `EmbedFactory`  |
-| Method and Function    | `camelCase`        | Imperative verb phrase                         | `toTitleCaseFullName`, `toPascalCaseAsciiName`, `getStageRole` |
+| Method and Function    | `camelCase`        | Imperative verb phrase                         | `toTitleCaseFullName`, `toPascalCaseAsciiName`, `getRoundRole` |
 | Variable and Parameter | `camelCase`        | Descriptive noun phrase without abbreviations  | `studentId`, `formattedFullName`, `targetRoleIds`              |
 | Constant               | `UPPER_SNAKE_CASE` | Uppercase words separated by underscores       | `DISCORD_MISSING_PERMISSIONS_CODE`, `VERIFY_PANEL_BUTTON_ID`   |
 
@@ -21,14 +21,14 @@ Single-letter variable names and informal abbreviations such as `rnd`, `btc`, `m
 
 ## 2. Architectural Suffixes by Layer
 
-| Directory    | Required Suffix                      | Responsibility                                                  | Examples                                                                     |
-| ------------ | ------------------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `config`     | `*Schema`, `*Loader`                 | Declares Zod configuration schemas and loads YAML configuration | `ConfigSchema`, `ConfigLoader`                                               |
-| `model`      | Domain noun                          | Represents domain entities, records, and result structures      | `Student`, `VerificationOutcome`                                             |
-| `repository` | `*Client`, `*Repository`             | Manages SQLite connections and executes data queries            | `DatabaseClient`, `StudentRepository`                                        |
-| `controller` | `*Controller`                        | Enforces domain logic and orchestrates state changes            | `VerificationController`, `StudentController`, `RoundController`             |
-| `view`       | `*Factory`, `*CommandView`           | Registers slash commands and renders Discord responses          | `EmbedFactory`, `VerifyCommandView`, `RoundCommandView`, `SystemCommandView` |
-| `util`       | `*Validator`, `*Resolver`, `*Logger` | Provides stateless validation, Snowflake ID lookup, and logging | `InputValidator`, `GuildResourceResolver`, `Logger`                          |
+| Directory    | Required Suffix                                 | Responsibility                                                  | Examples                                                                    |
+| ------------ | ----------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `config`     | `*Schema`, `*Loader`                            | Declares Zod configuration schemas and loads YAML configuration | `ConfigSchema`, `ConfigLoader`                                              |
+| `model`      | Domain noun                                     | Represents domain entities, records, and result structures      | `Student`, `VerificationOutcome`                                            |
+| `repository` | `*Client`, `*Repository`                        | Manages SQLite connections and executes data queries            | `DatabaseClient`, `StudentRepository`                                       |
+| `controller` | `*Controller`                                   | Enforces domain logic and orchestrates state changes            | `VerificationController`, `StudentController`, `RoundController`            |
+| `view`       | `*Factory`, `*CommandView`, `*Builder`          | Registers slash commands and renders Discord responses          | `EmbedFactory`, `VerifyCommandView`, `StudentModalBuilder`                  |
+| `util`       | `*Validator`, `*Resolver`, `*Logger`, `*Helper` | Provides stateless validation, Snowflake ID lookup, and logging | `InputValidator`, `GuildResourceResolver`, `Logger`, `MemberMutationHelper` |
 
 ---
 

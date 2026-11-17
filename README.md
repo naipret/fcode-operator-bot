@@ -114,7 +114,7 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 | `/round revoke`         | Owner               | Bulk removes one or more selected round roles with confirmation prompt and optional `exclude`/`only` filters publicly in the channel  |
 | `/system verify`        | Owner               | Enables or disables verification and optionally posts or updates the verification button panel in a selected text channel             |
 | `/system sync`          | Owner               | Reconciles SQLite student records (nicknames and roles) to Discord publicly in the channel                                            |
-| `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and `sync`/`backup` timers with zero downtime                                      |
+| `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and the `backup` timer with zero downtime                                          |
 
 ---
 
@@ -123,7 +123,7 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 1. [Server Permissions Specification](docs/SERVER_PERMISSIONS.md): Role hierarchy, categories, channels, and permission overwrites.
 2. [Architecture and Data Model](docs/ARCHITECTURE_MODEL.md): Layered MVC boundaries, event-loop concurrency, and SQLite schema.
 3. [Design Principles](docs/DESIGN_PRINCIPLES.md): `SOLID`, `SoC`, `DRY`, `KISS`, and `YAGNI` applications.
-4. [Design Patterns](docs/DESIGN_PATTERNS.md): Repository, Factory, Singleton, Guard Mutex, and Observer patterns.
+4. [Design Patterns](docs/DESIGN_PATTERNS.md): Repository, Factory, Validated Config, Guard Mutex, and Observer patterns.
 5. [Naming Conventions](docs/NAMING_CONVENTIONS.md): TypeScript and Discord naming standards.
 6. [Clean Code Standards](docs/CLEAN_CODE.md): TSDoc-only comment rules and exception handling discipline.
 7. [Engineering Writing Style](docs/WRITING_STYLE.md): Technical prose rules enforced across all project documentation.
