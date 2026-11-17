@@ -36,16 +36,6 @@ export class GuildResourceResolver {
   }
 
   /**
-   * Resolves the configured base verified role from the guild cache.
-   *
-   * @param guild the target Discord guild
-   * @returns the matching Discord Role or null when absent
-   */
-  public getVerifiedRole(guild: Guild): Role | null {
-    return guild.roles.cache.get(this.getVerifiedRoleId()) ?? null;
-  }
-
-  /**
    * Returns the configured Discord Snowflake ID for a given round key.
    *
    * @param roundKey the round identifier
