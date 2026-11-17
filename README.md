@@ -59,7 +59,7 @@ fcode-operator-bot/
 2. Enable the Server Members Intent under Privileged Gateway Intents in the Discord Developer Portal, and invite the bot with the `bot` and `applications.commands` scopes.
 3. Position the bot's managed role above `moderator`, `verified`, and `round-1` through `round-3` so the bot can update candidate nicknames and assign roles.
 4. Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
-5. Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.verifiedRoleId`, and `permissions.roundRoleIds`. Populate `logging.discord.channelId` if `logging.discord.enabled` is `true`.
+5. Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.supporterRoleId`, `permissions.verifiedRoleId`, and `permissions.roundRoleIds`. Populate `logging.discord.channelId` if `logging.discord.enabled` is `true`.
 
 ### Option A: Prebuilt Release Archive
 
@@ -119,6 +119,7 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 | `/round revoke`         | Owner               | Bulk removes one or more selected round roles with confirmation prompt and optional `exclude`/`only` filters publicly in the channel  |
 | `/system verify`        | Owner               | Enables or disables verification and optionally posts or updates the verification button panel in a selected text channel             |
 | `/system sync`          | Owner               | Reconciles SQLite student records (nicknames and roles) to Discord publicly in the channel                                            |
+| `/system staff`         | Owner               | Promotes verified members to `moderator` or `supporter` (`MOD` or `SUP` prefix) or resets staff (`none`)                              |
 | `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and the `backup` timer with zero downtime                                          |
 
 ---
