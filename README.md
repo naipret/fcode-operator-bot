@@ -34,13 +34,18 @@ fcode-operator-bot/
 │   ├── controller/
 │   ├── view/
 │   └── util/
+├── .editorconfig
 ├── .env.example
+├── .prettierrc
+├── AGENTS.md
 ├── commitlint.config.mjs
 ├── config.example.yaml
 ├── CONTRIBUTING.md
 ├── Dockerfile
 ├── eslint.config.mjs
+├── LICENSE
 ├── package.json
+├── README.md
 └── tsconfig.json
 ```
 
