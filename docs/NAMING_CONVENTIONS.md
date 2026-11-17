@@ -48,9 +48,9 @@ Single-letter variable names and informal abbreviations such as `rnd`, `btc`, `m
 
 ## 4. Discord Naming Standards
 
-| Discord Resource                    | Format Rule                                    | Language                      | Examples                                                         |
-| ----------------------------------- | ---------------------------------------------- | ----------------------------- | ---------------------------------------------------------------- |
-| System, Staff, Bot, and Round Roles | Configurable via Snowflake ID in `config.yaml` | English (`en-US`)             | `owner`, `moderator`, `round-1`, `round-2`, `round-3`            |
-| Categories                          | `UPPERCASE`                                    | English (`en-US`), full words | `GATEWAY`, `ROUND 1`, `STAFF`                                    |
-| Channels                            | Unicode 6.0 emoji plus `・` plus `kebab-case`  | English (`en-US`), full words | `✅・verification`, `🎫・support-ticket`, `💬・staff-discussion` |
-| Slash Command Options               | Strict `kebab-case`                            | English (`en-US`), full words | `full-name`, `student-id`, `channel`                             |
+| Discord Resource                    | Format Rule                                    | Language                      | Examples                                                  |
+| ----------------------------------- | ---------------------------------------------- | ----------------------------- | --------------------------------------------------------- |
+| System, Staff, Bot, and Round Roles | Configurable via Snowflake ID in `config.yaml` | English (`en-US`)             | `owner`, `moderator`, `round-1`, `round-2`, `round-3`     |
+| Categories                          | `UPPERCASE`                                    | English (`en-US`), full words | `GATEWAY`, `ROUND 1`, `STAFF`                             |
+| Channels                            | Unicode 6.0 emoji plus `・` plus `kebab-case`  | English (`en-US`), full words | `✅・verification`, `🎫・support`, `💬・staff-discussion` |
+| Slash Command Options               | Strict `kebab-case`                            | English (`en-US`), full words | `full-name`, `student-id`, `channel`                      |

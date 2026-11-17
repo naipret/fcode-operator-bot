@@ -46,7 +46,7 @@ function buildValidatedNickname(
 ## 3. Error Handling and Startup Validation
 
 1. Validate `.env` and `config.yaml` with `Zod` at startup so any empty or malformed configuration keys are itemized together in a single fatal report before connecting to Discord.
-2. Verify on `ClientReady` that every configured Discord Snowflake ID (`supportChannelId`, `ownerRoleId`, `moderatorRoleId`, and `stageRoleIds`) exists in the target guild cache.
+2. Verify on `ClientReady` that every configured Discord Snowflake ID (`ownerRoleId`, `moderatorRoleId`, `verifiedRoleId`, `roundRoleIds`, and `logging.discord.channelId` when enabled) exists in the target guild cache.
 3. Catch expected Discord API exceptions such as `50013` (Missing Permissions when mutating the Server Owner or higher-ranked roles) and translate them into clear user-facing guidance rather than unhandled promise rejections.
 4. Wrap database mutations that update multiple records inside explicit SQLite transactions (`runInTransaction`) so partial state updates cannot occur on unexpected errors.
 5. Register `SIGINT` and `SIGTERM` shutdown handlers to close the Discord client and SQLite connection cleanly on process exit.
