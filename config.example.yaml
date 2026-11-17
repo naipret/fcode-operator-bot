@@ -1,6 +1,23 @@
+# ==============================================================================
+# F-Code Operator Bot - Configuration Template
+# ==============================================================================
+# Copy this file to `config.yaml` and fill in the required Discord Snowflake IDs
+# before starting the bot.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Section: bot
+# Controls standardized nickname formatting, student ID validation, and naming.
+# - clubCohortPrefix        : Prefix for nicknames (F22_Name_ID) and DB file
+#                             naming (./data/recruitment-f22.db).
+# - maxNicknameLength       : Maximum Discord nickname length (16-32).
+# - allowedCohorts          : Two-digit eligible cohort numbers (e.g., '22').
+# - allowedStudentIdPrefixes: Permitted two-letter campus/major prefixes.
+# - studentIdRegex          : Regex capturing the 2-digit cohort in group 1.
+# - fullNameRegex           : Unicode regex validating full name input.
+# - nicknameTemplate        : Must include {prefix}, {name}, and {studentId}.
+# ------------------------------------------------------------------------------
 bot:
-  # Prefix used for standardized nicknames (e.g., F22_NguyenVanA_SE220001)
-  # and dynamic SQLite database naming (e.g., ./data/recruitment-f22.db)
   clubCohortPrefix: 'F22'
   maxNicknameLength: 32
   allowedCohorts:
@@ -21,58 +38,86 @@ bot:
   fullNameRegex: '^[\p{L}\s]{2,60}$'
   nicknameTemplate: '{prefix}_{name}_{studentId}'
 
+# ------------------------------------------------------------------------------
+# Section: verification
+# Controls candidate self-verification behavior at startup.
+# - enabledByDefault: Initial verification gate state when the database is new.
+# - defaultRound    : Round granted automatically upon verification alongside
+#                     verifiedRoleId.
+#                     Options: 'none' | 'round-1' | 'round-2' | 'round-3'
+# ------------------------------------------------------------------------------
 verification:
   enabledByDefault: true
-  # Round automatically granted upon verification alongside verifiedRoleId.
-  # Options: 'none' | 'round-1' | 'round-2' | 'round-3'
   defaultRound: 'none'
 
+# ------------------------------------------------------------------------------
+# Section: permissions
+# Discord Role Snowflake IDs governing bot authorization and candidate stages.
+# - ownerRoleId    : Grants full administrative access (/round, /system,
+#                    /student) equivalent to the Discord Server Owner.
+# - moderatorRoleId: Grants student support access (/student commands only).
+# - verifiedRoleId : Base role assigned immediately upon verification.
+# - roundRoleIds   : Role IDs for round1, round2, and round3.
+# ------------------------------------------------------------------------------
 permissions:
-  # Grants full administrative access (/round, /system, and /student) equivalent to the Discord Server Owner
   ownerRoleId: ''
-  # Grants student support access (/student commands only; cannot run /round or /system)
   moderatorRoleId: ''
-  # Base role assigned to every candidate immediately upon successful verification
   verifiedRoleId: ''
   roundRoleIds:
     round1: ''
     round2: ''
     round3: ''
 
+# ------------------------------------------------------------------------------
+# Section: database
+# Controls SQLite storage, periodic Discord sync, and native VACUUM INTO backups.
+# - directory             : Folder holding recruitment-<prefix>.db.
+# - sync.enabled          : Periodically reconciles SQLite -> Discord changes.
+# - sync.intervalMinutes  : Sync interval in minutes (minimum: 1).
+# - backup.enabled        : Enables automatic native SQLite VACUUM INTO backups.
+# - backup.directory      : Folder storing timestamped .db backup snapshots.
+# - backup.intervalMinutes: Backup interval in minutes (1440 = 24 hours).
+# - backup.maxFiles       : Maximum backup files retained (oldest pruned).
+# ------------------------------------------------------------------------------
 database:
   directory: './data'
-  # Periodically reconciles manual SQLite database edits back to Discord members
   sync:
     enabled: true
     intervalMinutes: 5
-  # Native SQLite online backup (VACUUM INTO) with automatic old-file pruning
   backup:
     enabled: true
     directory: './data/backups'
-    # 1440 minutes = 24 hours
     intervalMinutes: 1440
     maxFiles: 7
 
+# ------------------------------------------------------------------------------
+# Section: logging
+# Independent 3-tier Pino logging pipeline (file -> console -> discord).
+# Allowed levels for each tier: 'debug' | 'info' | 'warn' | 'error'
+# - file.enabled     : Writes daily structured JSON logs (YYYY-MM-DD.log).
+# - file.maxFiles    : Maximum daily log files retained (oldest pruned).
+# - console.enabled  : Writes colorized human-readable logs via pino-pretty.
+# - discord.enabled  : Batches logs to a Discord channel (2.5s window).
+# - discord.channelId: Required Discord channel Snowflake ID when enabled.
+# ------------------------------------------------------------------------------
 logging:
-  # 1. Local daily JSON log files (YYYY-MM-DD.log)
   file:
     enabled: true
-    # Options: 'debug' | 'info' | 'warn' | 'error'
     level: 'debug'
     directory: './logs'
     maxFiles: 14
-  # 2. Pretty-printed terminal output
   console:
     enabled: true
-    # Options: 'debug' | 'info' | 'warn' | 'error'
     level: 'info'
-  # 3. Batched operational log forwarding to a Discord text channel
   discord:
     enabled: true
-    # Options: 'debug' | 'info' | 'warn' | 'error'
     level: 'info'
     channelId: ''
 
+# ------------------------------------------------------------------------------
+# Section: messages
+# Customizable UI copy rendered in verification panels and outcome embeds.
+# ------------------------------------------------------------------------------
 messages:
   verificationPanelTitle: 'Verify'
   verificationPanelDescription: 'Click the button below to verify your student identity.'
