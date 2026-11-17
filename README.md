@@ -50,19 +50,18 @@ fcode-operator-bot/
 
 ### Prerequisites
 
-1. **Discord Server Setup:** You may reference or clone the actual F22 recruitment server structure using this [Discord Server Template](https://discord.new/K7yMwH3Rx7B4) (adjust roles, channels, and permissions to match your cycle).
-2. **Discord Application Settings:** In the Discord Developer Portal, enable the **Server Members Intent** (`Privileged Gateway Intents`) and invite the bot with `bot` and `applications.commands` scopes.
-3. **Role Hierarchy:** Position the bot's managed role above `moderator`, `verified`, and `round-1` through `round-3` so it can update candidate nicknames and assign roles.
-4. **Configuration Files:**
-   - Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
-   - Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.verifiedRoleId`, `permissions.roundRoleIds`, and `logging.discord.channelId` (when `logging.discord.enabled` is `true`).
+1. Create or reference the F22 recruitment server layout using the [Discord Server Template](https://discord.new/K7yMwH3Rx7B4) and adjust roles, channels, and permissions to match your recruitment cycle.
+2. Enable the Server Members Intent under Privileged Gateway Intents in the Discord Developer Portal, and invite the bot with the `bot` and `applications.commands` scopes.
+3. Position the bot's managed role above `moderator`, `verified`, and `round-1` through `round-3` so the bot can update candidate nicknames and assign roles.
+4. Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
+5. Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.verifiedRoleId`, and `permissions.roundRoleIds`. Populate `logging.discord.channelId` if `logging.discord.enabled` is `true`.
 
 ### Option A: Prebuilt Release Archive (Free Hosting Panels and Production VPS)
 
-Use this option when deploying to free Discord bot hosting panels (such as Pterodactyl) or low-memory VPS instances without installing TypeScript or building on the host:
+Use this deployment path on free Discord bot hosting panels or low-memory VPS instances to run prebuilt JavaScript without installing TypeScript or compiling on the host.
 
-1. Download `fcode-operator-bot.zip` (or `.tar.gz`) from the repository's **Latest Release** and extract it into the host working directory.
-2. Add your `.env` and `config.yaml` files alongside `package.json`.
+1. Download `fcode-operator-bot.zip` or `fcode-operator-bot.tar.gz` from the Latest Release on GitHub Releases and extract the archive into the host working directory.
+2. Place your configured `.env` and `config.yaml` files alongside `package.json`.
 3. Install production dependencies only and start the prebuilt bundle:
 
 ```bash
@@ -70,7 +69,7 @@ npm ci --omit=dev
 npm run start
 ```
 
-> If a hosting panel runs Node directly instead of `npm run start`, set the startup command to `node --env-file-if-exists=.env dist/index.js`.
+If a hosting panel invokes Node directly instead of `npm run start`, set the startup command to `node --env-file-if-exists=.env dist/index.js`.
 
 ### Option B: From Source (`git clone` and Local Development)
 
@@ -112,7 +111,7 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 | `/student reset`        | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles by `@user` or Student ID publicly in the channel                    |
 | `/round promote`        | Owner               | Transitions students between any two stages (`verified`, `round-1..3`) with confirmation prompt and optional `exclude`/`only` filters |
 | `/round revoke`         | Owner               | Bulk removes a round role with confirmation prompt and optional `exclude`/`only` filters publicly in the channel                      |
-| `/system verify`        | Owner               | Enables or disables verification and optionally posts/updates the verification button panel in a selected text channel                |
+| `/system verify`        | Owner               | Enables or disables verification and optionally posts or updates the verification button panel in a selected text channel             |
 | `/system sync`          | Owner               | Reconciles SQLite student records (nicknames and roles) to Discord publicly in the channel                                            |
 | `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and `sync`/`backup` timers with zero downtime                                      |
 
