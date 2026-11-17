@@ -1,4 +1,4 @@
-# F-Code Operator Discord Bot
+# F-Code Operator Bot
 
 Configuration-driven Discord recruitment bot for F-Code Club at FPT University. The bot automates single-step candidate verification, stage role management across three recruitment rounds, instant rejoin restoration, and owner-controlled bulk stage transitions.
 
