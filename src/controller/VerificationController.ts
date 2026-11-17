@@ -67,11 +67,7 @@ export class VerificationController {
     }
 
     if (existingStudent.isModerator || existingStudent.isSupporter) {
-      if (this.resourceResolver.resolveStaffTier(member) === null) {
-        this.studentRepository.deleteByDiscordId(member.id);
-        return false;
-      }
-      return true;
+      return this.resourceResolver.resolveStaffTier(member) !== null;
     }
 
     return existingStudent.isVerified;
@@ -127,14 +123,21 @@ export class VerificationController {
   /**
    * Synchronizes manual Discord round role and staff role changes into SQLite and nicknames.
    *
-   * @param _oldMember previous Discord guild member snapshot before update
+   * @param oldMember previous Discord guild member snapshot before update
    * @param newMember updated Discord guild member snapshot after update
    */
   public syncMemberRolesToDatabase(
-    _oldMember: GuildMember | PartialGuildMember,
+    oldMember: GuildMember | PartialGuildMember,
     newMember: GuildMember,
   ): void {
     if (this.lockedDiscordIds.has(newMember.id)) {
+      return;
+    }
+
+    if (
+      !oldMember.partial &&
+      !this.hasRoleOrNicknameChanged(oldMember, newMember)
+    ) {
       return;
     }
 
@@ -151,18 +154,52 @@ export class VerificationController {
         newMember,
         existingStudent,
         newStaffTier,
-      );
+      ).catch((error: unknown) => {
+        Logger.error(
+          "VerificationController",
+          `Failed processing staff promotion or prefix sync for ${newMember.id}`,
+          error,
+        );
+      });
       return;
     }
 
     if (existingStudent.isModerator || existingStudent.isSupporter) {
-      void this.handleStaffDowngradeReset(newMember);
+      void this.handleStaffDowngradeReset(newMember).catch((error: unknown) => {
+        Logger.error(
+          "VerificationController",
+          `Failed processing staff downgrade reset for ${newMember.id}`,
+          error,
+        );
+      });
       return;
     }
 
     if (existingStudent.isVerified) {
       this.syncCandidateRoundFlags(newMember, existingStudent);
     }
+  }
+
+  /**
+   * Checks whether a guild member's roles or nickname changed between member update snapshots.
+   *
+   * @param oldMember previous non-partial guild member snapshot
+   * @param newMember updated guild member snapshot
+   * @returns true if either nickname or role membership changed
+   */
+  private hasRoleOrNicknameChanged(
+    oldMember: GuildMember,
+    newMember: GuildMember,
+  ): boolean {
+    if (oldMember.nickname !== newMember.nickname) {
+      return true;
+    }
+    if (oldMember.roles.cache.size !== newMember.roles.cache.size) {
+      return true;
+    }
+    return oldMember.roles.cache.some(
+      (role) => !newMember.roles.cache.has(role.id),
+    );
   }
 
   /**

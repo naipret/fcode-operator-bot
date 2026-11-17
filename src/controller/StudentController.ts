@@ -4,6 +4,7 @@ import type { Student } from "../model/Student.js";
 import type { StudentRepository } from "../repository/StudentRepository.js";
 import type { GuildResourceResolver } from "../util/GuildResourceResolver.js";
 import { InputValidator } from "../util/InputValidator.js";
+import { Logger } from "../util/Logger.js";
 import { MemberMutationHelper } from "../util/MemberMutationHelper.js";
 
 /**
@@ -756,7 +757,13 @@ export class StudentController {
       this.lockedDiscordIds,
       student.discordId,
       () => this.reconcileStudentMember(guild, student),
-    );
+    ).catch((error: unknown) => {
+      Logger.warn(
+        "StudentController",
+        `Failed syncing member ${student.studentId} (${student.discordId}): ${String(error)}`,
+      );
+      return { acquired: true as const, value: student.studentId };
+    });
     return lockResult.acquired
       ? lockResult.value
       : `${student.studentId} (locked)`;
