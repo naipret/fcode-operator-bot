@@ -22,7 +22,7 @@ Recruitment parameters, cohort ranges (`allowedCohorts`), cohort and staff prefi
 
 ### Interface Segregation Principle
 
-Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController` and `StudentRepository`, `RoundCommandView` depends on `RoundController` and `GuildResourceResolver`, and `SystemCommandView` depends on `StudentRepository`, `StudentController`, and `GuildResourceResolver`.
+Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController`, `RoundCommandView` depends on `RoundController` and `GuildResourceResolver`, and `SystemCommandView` depends on `StudentRepository`, `StudentController`, and `GuildResourceResolver`.
 
 ### Dependency Inversion Principle
 
