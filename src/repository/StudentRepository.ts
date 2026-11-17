@@ -306,12 +306,35 @@ export class StudentRepository {
    *
    * @param studentIds the list of student identifiers to update
    * @param targetStage the destination stage ('verified' or 'round-1' | 'round-2' | 'round-3')
+   * @param preserveHigherRounds when true, enables target stage flags without clearing higher rounds
    */
   public applyRoundTransitionForMany(
     studentIds: string[],
     targetStage: "verified" | RoundKey,
+    preserveHigherRounds = false,
   ): void {
     if (studentIds.length === 0) {
+      return;
+    }
+
+    const connection = this.databaseClient.getConnection();
+
+    if (preserveHigherRounds) {
+      const columnsToEnable = this.resolveColumnsToEnable(targetStage);
+      if (columnsToEnable.length === 0) {
+        return;
+      }
+      const assignments = columnsToEnable
+        .map((column) => `${column} = 1`)
+        .join(", ");
+      const statement = connection.prepare(
+        `UPDATE students SET ${assignments} WHERE student_id = ?`,
+      );
+      this.databaseClient.runInTransaction(() => {
+        for (const studentId of studentIds) {
+          statement.run(studentId);
+        }
+      });
       return;
     }
 
@@ -324,7 +347,6 @@ export class StudentRepository {
       isRound3: targetStage === "round-3",
     };
 
-    const connection = this.databaseClient.getConnection();
     const statement = connection.prepare(
       "UPDATE students SET is_round_1 = ?, is_round_2 = ?, is_round_3 = ? WHERE student_id = ?",
     );
@@ -339,6 +361,25 @@ export class StudentRepository {
         );
       }
     });
+  }
+
+  /**
+   * Resolves the list of round columns to enable for an additive stage promotion.
+   *
+   * @param targetStage the destination stage
+   * @returns column names to set to 1
+   */
+  private resolveColumnsToEnable(targetStage: "verified" | RoundKey): string[] {
+    switch (targetStage) {
+      case "verified":
+        return [];
+      case "round-1":
+        return ["is_round_1"];
+      case "round-2":
+        return ["is_round_1", "is_round_2"];
+      case "round-3":
+        return ["is_round_1", "is_round_2", "is_round_3"];
+    }
   }
 
   /**

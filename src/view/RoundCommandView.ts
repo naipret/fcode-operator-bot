@@ -392,6 +392,7 @@ export class RoundCommandView {
         guild,
         candidates,
         pending.toStage,
+        pending.fromStage,
       );
       Logger.info("RoundCommandView", "Completed round promote operation", {
         callerId: interaction.user.id,

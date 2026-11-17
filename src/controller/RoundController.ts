@@ -15,6 +15,13 @@ import { MemberMutationHelper } from "../util/MemberMutationHelper.js";
  */
 export type StageKey = "verified" | RoundKey;
 
+const STAGE_ORDER: Record<StageKey, number> = {
+  verified: 0,
+  "round-1": 1,
+  "round-2": 2,
+  "round-3": 3,
+};
+
 /**
  * Coordinates owner-only recruitment round transitions and bulk role revocation.
  */
@@ -92,6 +99,7 @@ export class RoundController {
    * @param guild the target Discord guild
    * @param candidates the resolved list of students to transition
    * @param toStage the destination stage ('verified' or 'round-1' | 'round-2' | 'round-3')
+   * @param fromStage optional source stage used to preserve higher rounds on upward promotions
    * @returns a summary BatchRoleMutationResult
    * @throws Error if any configured round role is missing on the server
    */
@@ -99,6 +107,7 @@ export class RoundController {
     guild: Guild,
     candidates: Student[],
     toStage: StageKey,
+    fromStage?: StageKey,
   ): Promise<BatchRoleMutationResult> {
     const round1Role = this.resourceResolver.getRoundRole(guild, "round-1");
     const round2Role = this.resourceResolver.getRoundRole(guild, "round-2");
@@ -109,6 +118,8 @@ export class RoundController {
       );
     }
 
+    const preserveHigherRounds =
+      fromStage !== undefined && STAGE_ORDER[toStage] > STAGE_ORDER[fromStage];
     const managedRoundIds = new Set<string>([
       round1Role.id,
       round2Role.id,
@@ -132,6 +143,7 @@ export class RoundController {
         toStage,
         managedRoundIds,
         desiredRoundIds,
+        preserveHigherRounds,
       );
       if (outcome === "UPDATED") {
         updatedStudentIds.push(student.studentId);
@@ -145,6 +157,7 @@ export class RoundController {
     this.studentRepository.applyRoundTransitionForMany(
       updatedStudentIds,
       toStage,
+      preserveHigherRounds,
     );
 
     return {
@@ -266,6 +279,7 @@ export class RoundController {
     toStage: StageKey,
     managedRoundIds: Set<string>,
     desiredRoundIds: Set<string>,
+    preserveHigherRounds: boolean,
   ): Promise<string> {
     const lockResult = await MemberMutationHelper.runWithMemberLock(
       this.lockedDiscordIds,
@@ -275,17 +289,19 @@ export class RoundController {
           guild.members.cache.get(student.discordId) ??
           (await guild.members.fetch(student.discordId).catch(() => null));
         if (!member) {
-          return `${student.studentId} (not in server)`;
+          return "UPDATED";
         }
 
         const databaseMatches = this.doesStudentMatchStageFlags(
           student,
           toStage,
+          preserveHigherRounds,
         );
         const discordMatches = this.doesMemberMatchRoundRoles(
           member,
           managedRoundIds,
           desiredRoundIds,
+          preserveHigherRounds,
         );
         if (databaseMatches && discordMatches) {
           return "SKIPPED";
@@ -294,7 +310,9 @@ export class RoundController {
         if (!discordMatches) {
           const preservedIds = member.roles.cache
             .filter(
-              (role) => role.id !== guild.id && !managedRoundIds.has(role.id),
+              (role) =>
+                role.id !== guild.id &&
+                (preserveHigherRounds || !managedRoundIds.has(role.id)),
             )
             .map((role) => role.id);
           await member.edit({
@@ -405,11 +423,13 @@ export class RoundController {
    *
    * @param student the student domain record
    * @param targetStage the target stage
+   * @param preserveHigherRounds whether higher round flags are preserved instead of cleared
    * @returns true if flags match
    */
   private doesStudentMatchStageFlags(
     student: Student,
     targetStage: StageKey,
+    preserveHigherRounds: boolean,
   ): boolean {
     const expectRound1 =
       targetStage === "round-1" ||
@@ -417,6 +437,13 @@ export class RoundController {
       targetStage === "round-3";
     const expectRound2 = targetStage === "round-2" || targetStage === "round-3";
     const expectRound3 = targetStage === "round-3";
+    if (preserveHigherRounds) {
+      return (
+        (!expectRound1 || student.isRound1) &&
+        (!expectRound2 || student.isRound2) &&
+        (!expectRound3 || student.isRound3)
+      );
+    }
     return (
       student.isRound1 === expectRound1 &&
       student.isRound2 === expectRound2 &&
@@ -430,13 +457,23 @@ export class RoundController {
    * @param member the Discord guild member
    * @param managedRoundIds all managed round role IDs
    * @param desiredRoundIds desired round role IDs
-   * @returns true if member holds the exact desired subset of managed round roles
+   * @param preserveHigherRounds whether extra existing round roles should be preserved
+   * @returns true if member holds the desired round roles
    */
   private doesMemberMatchRoundRoles(
     member: GuildMember,
     managedRoundIds: Set<string>,
     desiredRoundIds: Set<string>,
+    preserveHigherRounds: boolean,
   ): boolean {
+    if (preserveHigherRounds) {
+      for (const roleId of desiredRoundIds) {
+        if (!member.roles.cache.has(roleId)) {
+          return false;
+        }
+      }
+      return true;
+    }
     for (const roleId of managedRoundIds) {
       const hasRole = member.roles.cache.has(roleId);
       const shouldHave = desiredRoundIds.has(roleId);
