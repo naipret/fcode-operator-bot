@@ -1,4 +1,4 @@
-# Clean Code and Documentation Standards
+# Clean Code Standards
 
 This document defines comment discipline, TSDoc formatting, exception handling, and startup validation across `fcode-operator-bot`.
 
