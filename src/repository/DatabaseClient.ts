@@ -62,6 +62,44 @@ export class DatabaseClient {
   }
 
   /**
+   * Creates an atomic, defragmented online SQLite backup via VACUUM INTO and prunes excess files.
+   *
+   * @param backupDirectory destination directory for backup .db files
+   * @param maxFiles maximum number of backup files to retain
+   * @param cohortPrefix club cohort prefix used in backup file naming
+   * @returns full path to the newly created backup file
+   */
+  public createBackup(backupDirectory: string, maxFiles: number, cohortPrefix: string): string {
+    const resolvedDir = path.resolve(backupDirectory);
+    if (!fs.existsSync(resolvedDir)) {
+      fs.mkdirSync(resolvedDir, { recursive: true });
+    }
+
+    const now = new Date();
+    const pad = (value: number): string => String(value).padStart(2, '0');
+    const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const filePrefix = `recruitment-${cohortPrefix.toLowerCase()}-`;
+    const backupPath = path.join(resolvedDir, `${filePrefix}${timestamp}.db`);
+    const escapedPath = backupPath.replaceAll("'", "''");
+
+    this.database.exec(`VACUUM INTO '${escapedPath}';`);
+
+    const backups = fs
+      .readdirSync(resolvedDir)
+      .filter((name) => name.startsWith(filePrefix) && name.endsWith('.db'))
+      .sort();
+
+    while (backups.length > maxFiles) {
+      const oldest = backups.shift();
+      if (oldest) {
+        fs.unlinkSync(path.join(resolvedDir, oldest));
+      }
+    }
+
+    return backupPath;
+  }
+
+  /**
    * Configures SQLite concurrency and durability pragmas.
    *
    * @param isInMemory whether the connection uses an ephemeral in-memory database

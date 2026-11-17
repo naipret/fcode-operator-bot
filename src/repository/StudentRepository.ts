@@ -207,6 +207,7 @@ export class StudentRepository {
   public syncRoleStateByDiscordId(
     discordId: string,
     state: {
+      isVerified?: boolean;
       isRound1: boolean;
       isRound2: boolean;
       isRound3: boolean;
@@ -217,13 +218,57 @@ export class StudentRepository {
       .prepare(
         `
         UPDATE students
-        SET is_round_1 = ?,
+        SET is_verified = COALESCE(?, is_verified),
+            is_round_1 = ?,
             is_round_2 = ?,
             is_round_3 = ?
         WHERE discord_id = ?
       `,
       )
-      .run(state.isRound1 ? 1 : 0, state.isRound2 ? 1 : 0, state.isRound3 ? 1 : 0, discordId);
+      .run(
+        state.isVerified === undefined ? null : state.isVerified ? 1 : 0,
+        state.isRound1 ? 1 : 0,
+        state.isRound2 ? 1 : 0,
+        state.isRound3 ? 1 : 0,
+        discordId,
+      );
+  }
+
+  /**
+   * Applies cumulative round flags for a target stage across multiple students atomically.
+   *
+   * @param studentIds the list of student identifiers to update
+   * @param targetStage the destination stage ('verified' or 'round-1' | 'round-2' | 'round-3')
+   */
+  public applyRoundTransitionForMany(
+    studentIds: string[],
+    targetStage: 'verified' | RoundKey,
+  ): void {
+    if (studentIds.length === 0) {
+      return;
+    }
+
+    const flags = {
+      isRound1: targetStage === 'round-1' || targetStage === 'round-2' || targetStage === 'round-3',
+      isRound2: targetStage === 'round-2' || targetStage === 'round-3',
+      isRound3: targetStage === 'round-3',
+    };
+
+    const connection = this.databaseClient.getConnection();
+    const statement = connection.prepare(
+      'UPDATE students SET is_round_1 = ?, is_round_2 = ?, is_round_3 = ? WHERE student_id = ?',
+    );
+
+    this.databaseClient.runInTransaction(() => {
+      for (const studentId of studentIds) {
+        statement.run(
+          flags.isRound1 ? 1 : 0,
+          flags.isRound2 ? 1 : 0,
+          flags.isRound3 ? 1 : 0,
+          studentId,
+        );
+      }
+    });
   }
 
   /**
