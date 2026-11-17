@@ -21,14 +21,14 @@ Single-letter variable names and informal abbreviations such as `rnd`, `btc`, `m
 
 ## 2. Architectural Suffixes by Layer
 
-| Directory    | Required Suffix                      | Responsibility                                                  | Examples                                                         |
-| ------------ | ------------------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `config`     | `*Schema`, `*Loader`                 | Declares Zod configuration schemas and loads YAML configuration | `ConfigSchema`, `ConfigLoader`                                   |
-| `model`      | Domain noun                          | Represents domain entities, records, and result structures      | `Student`, `VerificationOutcome`                                 |
-| `repository` | `*Client`, `*Repository`             | Manages SQLite connections and executes data queries            | `DatabaseClient`, `StudentRepository`                            |
-| `controller` | `*Controller`                        | Enforces domain logic and orchestrates state changes            | `VerificationController`, `StudentController`, `RoundController` |
-| `view`       | `*Factory`, `*CommandView`           | Registers slash commands and renders Discord responses          | `EmbedFactory`, `VerifyCommandView`, `RoundCommandView`          |
-| `util`       | `*Validator`, `*Resolver`, `*Logger` | Provides stateless validation, Snowflake ID lookup, and logging | `InputValidator`, `GuildResourceResolver`, `Logger`              |
+| Directory    | Required Suffix                      | Responsibility                                                  | Examples                                                                     |
+| ------------ | ------------------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `config`     | `*Schema`, `*Loader`                 | Declares Zod configuration schemas and loads YAML configuration | `ConfigSchema`, `ConfigLoader`                                               |
+| `model`      | Domain noun                          | Represents domain entities, records, and result structures      | `Student`, `VerificationOutcome`                                             |
+| `repository` | `*Client`, `*Repository`             | Manages SQLite connections and executes data queries            | `DatabaseClient`, `StudentRepository`                                        |
+| `controller` | `*Controller`                        | Enforces domain logic and orchestrates state changes            | `VerificationController`, `StudentController`, `RoundController`             |
+| `view`       | `*Factory`, `*CommandView`           | Registers slash commands and renders Discord responses          | `EmbedFactory`, `VerifyCommandView`, `RoundCommandView`, `SystemCommandView` |
+| `util`       | `*Validator`, `*Resolver`, `*Logger` | Provides stateless validation, Snowflake ID lookup, and logging | `InputValidator`, `GuildResourceResolver`, `Logger`                          |
 
 ---
 

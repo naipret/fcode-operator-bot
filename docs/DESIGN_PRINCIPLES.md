@@ -18,11 +18,11 @@ Each class and module owns one cohesive responsibility:
 
 ### Open and Closed Principle
 
-Recruitment parameters, cohort ranges (`allowedCohorts`), cohort prefixes (`clubCohortPrefix`), support channel ID (`supportChannelId`), and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `roundRoleIds`) reside in `config.yaml`. Transitioning to a new cohort prefix or deploying on a new server template requires editing `config.yaml` rather than modifying controller source code.
+Recruitment parameters, cohort ranges (`allowedCohorts`), cohort prefixes (`clubCohortPrefix`), `defaultRound`, and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `verifiedRoleId`, `roundRoleIds`) reside in `config.yaml`. Transitioning to a new cohort prefix or deploying on a new server template requires editing `config.yaml` and running `/system reload` rather than modifying controller source code.
 
 ### Interface Segregation Principle
 
-Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController`, `StudentRepository`, and `GuildResourceResolver`, while `RoundCommandView` depends on `RoundController` and `GuildResourceResolver`.
+Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController`, `StudentRepository`, and `GuildResourceResolver`, `RoundCommandView` depends on `RoundController` and `GuildResourceResolver`, and `SystemCommandView` depends on `StudentRepository`, `StudentController`, and `GuildResourceResolver`.
 
 ### Dependency Inversion Principle
 

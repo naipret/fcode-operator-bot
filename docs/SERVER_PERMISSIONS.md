@@ -20,8 +20,9 @@ Discord enforces role hierarchy strictly from top to bottom. The managed role `f
 | 8         | `mentor`             | Staff              | Yes     | Yes                    | Access to round categories and staff channels                                                    |
 | 9         | `round-3`            | Round              | Yes     | No                     | Unlocks `ROUND 3` (retains cumulative access to `ROUND 1` and `ROUND 2`)                         |
 | 10        | `round-2`            | Round              | Yes     | No                     | Unlocks `ROUND 2` (retains cumulative access to `ROUND 1`)                                       |
-| 11        | `round-1`            | Round              | Yes     | No                     | Unlocks `ROUND 1` and hides `#✅・verification`                                                  |
-| 12        | `@everyone`          | Default baseline   | No      | No                     | Minimal baseline (`ReadMessageHistory`, `UseApplicationCommands`); views `GATEWAY` channels only |
+| 11        | `round-1`            | Round              | Yes     | No                     | Unlocks `ROUND 1`                                                                                |
+| 12        | `verified`           | Base Verified      | No      | No                     | Base role assigned immediately upon verification; hides `#✅・verification`                      |
+| 13        | `@everyone`          | Default baseline   | No      | No                     | Minimal baseline (`ReadMessageHistory`, `UseApplicationCommands`); views `GATEWAY` channels only |
 
 ---
 
@@ -55,17 +56,17 @@ Every channel uses Unicode 6.0 emojis paired with `kebab-case` English names so 
 
 ## 4. Slash Command Authorization Matrix
 
-All slash commands (`/verify`, `/student`, `/round`) reply publicly in the invoking channel so staff and candidates can observe command outcomes directly. Only the persistent `Verify Account` button in `#✅・verification` uses ephemeral responses to keep the verification channel clean.
+All slash commands (`/verify`, `/student`, `/round`, `/system`) reply publicly in the invoking channel so staff and candidates can observe command outcomes directly. Only the persistent `Verify Account` button in `#✅・verification` uses ephemeral responses to keep the verification channel clean.
 
-| Command                 | Subcommand     | Authorized Caller                              | Purpose                                                                                                |
-| ----------------------- | -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `/verify`               | Default        | Every guild member                             | Verifies new candidates in one step or restores returning verified members with public channel replies |
-| `Verify Account` button | Component      | Every guild member                             | Triggers the same one-step verification or restoration flow with ephemeral replies                     |
-| `/student`              | `lookup`       | Server Owner, `ownerRoleId`, `moderatorRoleId` | Inspects stored student identity, full name, and round flags                                           |
-| `/student`              | `register`     | Server Owner, `ownerRoleId`, `moderatorRoleId` | Manually registers or updates a student nickname and record for support resolution                     |
-| `/student`              | `reset`        | Server Owner, `ownerRoleId`, `moderatorRoleId` | Deletes a student record and strips recruitment roles for re-verification                              |
-| `/student`              | `sync`         | Server Owner, `ownerRoleId`, `moderatorRoleId` | Synchronizes SQLite student records (nicknames and round roles) to Discord                             |
-| `/round`                | `advance`      | Server Owner and `ownerRoleId` only            | Promotes all candidates from source round to target round with `exclude` or `only` filters             |
-| `/round`                | `revoke`       | Server Owner and `ownerRoleId` only            | Bulk removes a round role from selected members and updates SQLite                                     |
-| `/round`                | `verify`       | Server Owner and `ownerRoleId` only            | Toggles the server verification gate (`enabled` boolean) in SQLite                                     |
-| `/round`                | `verify-panel` | Server Owner and `ownerRoleId` only            | Posts or updates the persistent `Verify Account` panel message in a selected text channel              |
+| Command                 | Subcommand | Authorized Caller                              | Purpose                                                                                                |
+| ----------------------- | ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `/verify`               | Default    | Every guild member                             | Verifies new candidates in one step or restores returning verified members with public channel replies |
+| `Verify Account` button | Component  | Every guild member                             | Triggers the same one-step verification or restoration flow with ephemeral replies                     |
+| `/student`              | `lookup`   | Server Owner, `ownerRoleId`, `moderatorRoleId` | Inspects stored student identity, full name, and round flags by `@user` or Student ID                  |
+| `/student`              | `register` | Server Owner, `ownerRoleId`, `moderatorRoleId` | Manually registers a student (opens a Modal when `full-name` and `student-id` are omitted)             |
+| `/student`              | `reset`    | Server Owner, `ownerRoleId`, `moderatorRoleId` | Deletes a student record and strips recruitment roles by `@user` or Student ID                         |
+| `/round`                | `promote`  | Server Owner and `ownerRoleId` only            | Transitions candidates between any two stages (`verified`, `round-1..3`) after confirmation prompt     |
+| `/round`                | `revoke`   | Server Owner and `ownerRoleId` only            | Bulk removes a round role with `exclude` or `only` filters after confirmation prompt                   |
+| `/system`               | `verify`   | Server Owner and `ownerRoleId` only            | Toggles the verification gate (`enabled`) and optionally posts/updates the verification button panel   |
+| `/system`               | `sync`     | Server Owner and `ownerRoleId` only            | Synchronizes SQLite student records (nicknames and roles) to Discord                                   |
+| `/system`               | `reload`   | Server Owner and `ownerRoleId` only            | Validates and hot-reloads `config.yaml`, `Logger`, and background timers with zero downtime            |

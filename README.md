@@ -6,15 +6,15 @@ Configuration-driven Discord recruitment bot for F-Code Club at FPT University. 
 
 ## 1. Technical Stack and Constraints
 
-| Component       | Specification                                                                                           |
-| --------------- | ------------------------------------------------------------------------------------------------------- |
-| Runtime         | Node.js LTS (`>= 22.15.0`)                                                                              |
-| Language        | TypeScript (`strict: true`, `noUncheckedIndexedAccess: true`)                                           |
-| Discord SDK     | `discord.js` v14 with Gateway `Guilds` and `GuildMembers` intents                                       |
-| Persistence     | Built-in `node:sqlite` (`DatabaseSync` in `WAL` mode, stored at `data/recruitment-<prefix>.db`)         |
-| Logging         | `pino` with `pino-pretty` console output and midnight-rotating daily JSON files (`logs/YYYY-MM-DD.log`) |
-| Validation      | `Zod` for `config.yaml` and environment variables with itemized startup error reporting                 |
-| Quality Tooling | ESLint with TypeScript type checking, Prettier, Husky Git hooks, Commitlint, and GitHub Actions CI      |
+| Component       | Specification                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| Runtime         | Node.js LTS (`>= 22.15.0`)                                                                             |
+| Language        | TypeScript (`strict: true`, `noUncheckedIndexedAccess: true`)                                          |
+| Discord SDK     | `discord.js` v14 with Gateway `Guilds` and `GuildMembers` intents                                      |
+| Persistence     | Built-in `node:sqlite` (`DatabaseSync` in `WAL` mode, stored at `data/recruitment-<prefix>.db`)        |
+| Logging         | 3-tier `pino` (`file` with `maxFiles` pruning, `pino-pretty` `console`, and batched `discord` channel) |
+| Validation      | `Zod` for `config.yaml` and environment variables with itemized startup error reporting                |
+| Quality Tooling | ESLint with TypeScript type checking, Prettier, Husky Git hooks, Commitlint, and GitHub Actions CI     |
 
 ---
 
@@ -49,8 +49,15 @@ fcode-operator-bot/
 ## 3. Local Setup and Execution
 
 1. Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
-2. Copy `config.example.yaml` to `config.yaml` and populate `verification.supportChannelId`, `permissions.ownerRoleId`, `permissions.moderatorRoleId`, and `permissions.stageRoleIds`.
-3. Install dependencies and start the bot:
+2. Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.verifiedRoleId`, `permissions.roundRoleIds`, and `logging.discord.channelId` (if Discord logging is enabled).
+3. For prebuilt **Latest Release** archives (`fcode-operator-bot.zip` / `.tar.gz`), install runtime dependencies only and start directly without building:
+
+```bash
+npm ci --omit=dev
+npm run start
+```
+
+Or for local development from source:
 
 ```bash
 npm install
@@ -70,18 +77,18 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 
 ## 4. Slash Commands Overview
 
-| Command                 | Access Tier         | Behavior                                                                                                                            |
-| ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `/verify`               | Everyone            | Verifies new candidates (strictly 8-character student ID) or restores returning verified accounts, replying publicly in the channel |
-| `Verify Account` button | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                   |
-| `/student lookup`       | Owner and Moderator | Displays stored student full name, computed nickname, and round flags publicly in the channel                                       |
-| `/student register`     | Owner and Moderator | Manually registers or overrides a student record and Discord roles for support resolution publicly in the channel                   |
-| `/student reset`        | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles publicly in the channel                                           |
-| `/student sync`         | Owner and Moderator | Reconciles SQLite student records (nicknames and round roles) to Discord publicly in the channel                                    |
-| `/round advance`        | Owner               | Bulk promotes candidates between rounds with optional `exclude` or `only` user filters publicly in the channel                      |
-| `/round revoke`         | Owner               | Bulk removes a round role from selected users via inline mentions, IDs, or multi-user select menu publicly in the channel           |
-| `/round verify`         | Owner               | Enables or disables new `/verify` registrations dynamically publicly in the channel                                                 |
-| `/round verify-panel`   | Owner               | Posts or updates the persistent verification button embed in any selected text channel publicly in the channel                      |
+| Command                 | Access Tier         | Behavior                                                                                                                              |
+| ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `/verify`               | Everyone            | Verifies new candidates (`verifiedRoleId` + optional `defaultRound`) or restores returning accounts publicly in the channel           |
+| `Verify Account` button | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                     |
+| `/student lookup`       | Owner and Moderator | Displays stored student full name, computed nickname, and round flags by `@user` or Student ID publicly in the channel                |
+| `/student register`     | Owner and Moderator | Manually registers a student (`user` required; opens a Modal when `full-name` and `student-id` are omitted) publicly in the channel   |
+| `/student reset`        | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles by `@user` or Student ID publicly in the channel                    |
+| `/round promote`        | Owner               | Transitions students between any two stages (`verified`, `round-1..3`) with confirmation prompt and optional `exclude`/`only` filters |
+| `/round revoke`         | Owner               | Bulk removes a round role with confirmation prompt and optional `exclude`/`only` filters publicly in the channel                      |
+| `/system verify`        | Owner               | Enables or disables verification and optionally posts/updates the verification button panel in a selected text channel                |
+| `/system sync`          | Owner               | Reconciles SQLite student records (nicknames and roles) to Discord publicly in the channel                                            |
+| `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and `sync`/`backup` timers with zero downtime                                      |
 
 ---
 
