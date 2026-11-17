@@ -64,7 +64,7 @@ logging:
     enabled: true
     level: "info"
   discord:
-    enabled: true
+    enabled: false
     level: "info"
     channelId: ""
 
