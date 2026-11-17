@@ -1,6 +1,6 @@
 # F-Code Operator Discord Bot
 
-Configuration-driven Discord recruitment bot for F-Code Club at FPT University. The bot automates single-step candidate verification (`{prefix}_{PascalCaseName}_{StudentID}`), stage role management across three recruitment rounds, instant rejoin restoration, and owner-controlled bulk stage transitions.
+Configuration-driven Discord recruitment bot for F-Code Club at FPT University. The bot automates single-step candidate verification, stage role management across three recruitment rounds, instant rejoin restoration, and owner-controlled bulk stage transitions.
 
 ---
 
@@ -56,7 +56,7 @@ fcode-operator-bot/
 4. Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
 5. Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.verifiedRoleId`, and `permissions.roundRoleIds`. Populate `logging.discord.channelId` if `logging.discord.enabled` is `true`.
 
-### Option A: Prebuilt Release Archive (Free Hosting Panels and Production VPS)
+### Option A: Prebuilt Release Archive
 
 Use this deployment path on free Discord bot hosting panels or low-memory VPS instances to run prebuilt JavaScript without installing TypeScript or compiling on the host.
 
@@ -71,7 +71,7 @@ npm run start
 
 If a hosting panel invokes Node directly instead of `npm run start`, set the startup command to `node --env-file-if-exists=.env dist/index.js`.
 
-### Option B: From Source (`git clone` and Local Development)
+### Option B: From Source
 
 Use this option when developing locally or building from the TypeScript source (`src/`):
 
