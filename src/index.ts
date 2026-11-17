@@ -511,12 +511,12 @@ async function bootstrap(): Promise<void> {
     );
   });
 
-  client.on(Events.GuildMemberUpdate, (_oldMember, newMember) => {
+  client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
     const resolvedMember: GuildMember = newMember;
     if (resolvedMember.guild.id !== environment.DISCORD_SERVER_ID) {
       return;
     }
-    verificationController.syncMemberRolesToDatabase(resolvedMember);
+    verificationController.syncMemberRolesToDatabase(oldMember, resolvedMember);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {

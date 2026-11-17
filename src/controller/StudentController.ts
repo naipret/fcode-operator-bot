@@ -1,4 +1,4 @@
-import { DiscordAPIError, type Guild } from "discord.js";
+import { DiscordAPIError, type Guild, type GuildMember } from "discord.js";
 import type { AppConfig } from "../config/ConfigSchema.js";
 import type { Student } from "../model/Student.js";
 import type { StudentRepository } from "../repository/StudentRepository.js";
@@ -230,6 +230,25 @@ export class StudentController {
   }
 
   /**
+   * Promotes a verified member to moderator or supporter, or resets staff status with role:none.
+   *
+   * @param member the target Discord guild member
+   * @param targetRole target staff role ("moderator" | "supporter" | "none")
+   * @returns a StudentActionOutcome describing the applied staff transition
+   */
+  public async manageStaffRole(
+    member: GuildMember,
+    targetRole: "moderator" | "supporter" | "none",
+  ): Promise<StudentActionOutcome> {
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      member.id,
+      () => this.executeManageStaffRole(member, targetRole),
+    );
+    return lockResult.acquired ? lockResult.value : this.buildLockedOutcome();
+  }
+
+  /**
    * Synchronizes verified SQLite student records (nickname and roles) to Discord.
    *
    * @param guild the target Discord guild
@@ -326,6 +345,40 @@ export class StudentController {
       existingByDiscord.studentId !== validation.studentId
     ) {
       this.studentRepository.deleteByDiscordId(member.id);
+    }
+
+    const staffTier = this.resourceResolver.resolveStaffTier(member);
+    if (staffTier !== null) {
+      const staffPrefix =
+        this.resourceResolver.getPrefixForStaffTier(staffTier);
+      const staffNickname = InputValidator.formatNickname(
+        validation.formattedFullName,
+        validation.studentId,
+        this.appConfig.bot,
+        staffPrefix,
+      );
+      const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+        member,
+        this.appConfig.permissions,
+        "KEEP",
+      );
+      const hierarchyWarning =
+        await MemberMutationHelper.applyMemberNicknameAndRoles(
+          member,
+          staffNickname,
+          roleIds,
+          "StudentController",
+        );
+      this.studentRepository.deleteByDiscordId(member.id);
+      const warningNote = hierarchyWarning
+        ? `\n\nNote: ${hierarchyWarning}`
+        : "";
+
+      return {
+        success: true,
+        title: "Staff Registered Manually",
+        description: `Updated <@${member.id}> as staff successfully.\n\nFull Name: \`${validation.formattedFullName}\`\nNickname: \`${staffNickname}\`\nStudent ID: \`${validation.studentId}\`${warningNote}`,
+      };
     }
 
     const student = this.buildManualStudentRecord(
@@ -508,6 +561,91 @@ export class StudentController {
       success: true,
       title: "Student Reset Complete",
       description: `Removed database record \`${existingStudent.studentId}\` (<@${existingStudent.discordId}>). The user may now re-verify from scratch.${discordCleanupNote}`,
+    };
+  }
+
+  /**
+   * Executes staff promotion, role switching, or system-level staff reset under member lock.
+   *
+   * @param member the target Discord guild member
+   * @param targetRole desired staff role or "none" to reset
+   * @returns a StudentActionOutcome
+   */
+  private async executeManageStaffRole(
+    member: GuildMember,
+    targetRole: "moderator" | "supporter" | "none",
+  ): Promise<StudentActionOutcome> {
+    if (targetRole === "none") {
+      this.studentRepository.deleteByDiscordId(member.id);
+      const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+        member,
+        this.appConfig.permissions,
+        "NONE",
+      );
+      const hierarchyWarning =
+        await MemberMutationHelper.applyMemberNicknameAndRoles(
+          member,
+          null,
+          roleIds,
+          "StudentController",
+        );
+      const warningNote = hierarchyWarning
+        ? `\n\nNote: ${hierarchyWarning}`
+        : "";
+      return {
+        success: true,
+        title: "Staff Reset Complete",
+        description: `Cleared staff and recruitment roles, removed any SQLite candidate record, and reset the nickname for <@${member.id}>. The user must \`/verify\` again to re-enter.${warningNote}`,
+      };
+    }
+
+    const staffTier = targetRole === "moderator" ? "MOD" : "SUP";
+    const targetPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
+    const existingStudent = this.studentRepository.findByDiscordId(member.id);
+    const staffNickname = existingStudent
+      ? InputValidator.formatNickname(
+          existingStudent.fullName,
+          existingStudent.studentId,
+          this.appConfig.bot,
+          targetPrefix,
+        )
+      : InputValidator.rewriteStandardizedNicknamePrefix(
+          member.nickname,
+          this.appConfig.bot,
+          targetPrefix,
+        );
+
+    if (staffNickname === null) {
+      return {
+        success: false,
+        title: "Verification Required",
+        description: `<@${member.id}> must complete \`/verify\` (or \`/student register\`) before being promoted to \`${targetRole}\`.`,
+      };
+    }
+
+    this.studentRepository.deleteByDiscordId(member.id);
+    const roleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+      member,
+      this.appConfig.permissions,
+      staffTier,
+    );
+    const hierarchyWarning =
+      await MemberMutationHelper.applyMemberNicknameAndRoles(
+        member,
+        staffNickname,
+        roleIds,
+        "StudentController",
+      );
+    const targetRoleId =
+      staffTier === "MOD"
+        ? this.resourceResolver.getModeratorRoleId()
+        : this.resourceResolver.getSupporterRoleId();
+    const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : "";
+
+    return {
+      success: true,
+      title: "Staff Role Updated",
+      description: `Assigned <@&${targetRoleId}> to <@${member.id}>, removed candidate roles and SQLite record, and updated nickname to \`${staffNickname}\`.${warningNote}`,
     };
   }
 

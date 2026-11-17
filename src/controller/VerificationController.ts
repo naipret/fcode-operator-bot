@@ -1,4 +1,4 @@
-import type { GuildMember } from "discord.js";
+import type { GuildMember, PartialGuildMember } from "discord.js";
 import type { AppConfig } from "../config/ConfigSchema.js";
 import type { Student, VerificationOutcome } from "../model/Student.js";
 import type { StudentRepository } from "../repository/StudentRepository.js";
@@ -8,7 +8,7 @@ import { Logger } from "../util/Logger.js";
 import { MemberMutationHelper } from "../util/MemberMutationHelper.js";
 
 /**
- * Coordinates candidate verification, instant rejoin restoration, and role synchronization.
+ * Coordinates candidate verification, instant rejoin restoration, and staff role lifecycle sync.
  */
 export class VerificationController {
   private appConfig: AppConfig;
@@ -55,14 +55,19 @@ export class VerificationController {
   }
 
   /**
-   * Checks whether the interacting user already has a verified record and restores roles if needed.
+   * Checks whether the interacting user already has a verified record or active staff status.
    *
    * @param member the Discord guild member initiating verification
-   * @returns a VerificationOutcome when an existing verified record exists, or null for new candidates
+   * @returns a VerificationOutcome when an existing verified or staff identity exists, or null
    */
   public async checkAndRestoreIfVerified(
     member: GuildMember,
   ): Promise<VerificationOutcome | null> {
+    const staffOutcome = await this.checkActiveStaffVerification(member);
+    if (staffOutcome !== null) {
+      return staffOutcome;
+    }
+
     const existingStudent = this.studentRepository.findByDiscordId(member.id);
     if (!existingStudent?.isVerified) {
       return null;
@@ -102,15 +107,43 @@ export class VerificationController {
   }
 
   /**
-   * Synchronizes manual Discord round role additions or removals into local SQLite storage.
+   * Synchronizes manual Discord round role and staff role changes into SQLite and nicknames.
    *
-   * @param member the updated Discord guild member from guildMemberUpdate
+   * @param oldMember previous Discord guild member snapshot before update
+   * @param newMember updated Discord guild member snapshot after update
    */
-  public syncMemberRolesToDatabase(member: GuildMember): void {
-    if (this.lockedDiscordIds.has(member.id)) {
+  public syncMemberRolesToDatabase(
+    oldMember: GuildMember | PartialGuildMember,
+    newMember: GuildMember,
+  ): void {
+    if (this.lockedDiscordIds.has(newMember.id)) {
       return;
     }
 
+    const newStaffTier = this.resourceResolver.resolveStaffTier(newMember);
+    const oldStaffTier = this.resourceResolver.resolveStaffTier(oldMember);
+    const hadStaffState =
+      oldStaffTier !== null || this.hasStaffNicknamePrefix(newMember.nickname);
+
+    if (newStaffTier !== null) {
+      void this.handleStaffPromotionOrSwitch(newMember, newStaffTier);
+      return;
+    }
+
+    if (hadStaffState) {
+      void this.handleStaffDowngradeReset(newMember);
+      return;
+    }
+
+    this.syncCandidateRoundFlags(newMember);
+  }
+
+  /**
+   * Reconciles manual Discord round role edits for non-staff verified candidates.
+   *
+   * @param member the updated Discord guild member
+   */
+  private syncCandidateRoundFlags(member: GuildMember): void {
     const existingStudent = this.studentRepository.findByDiscordId(member.id);
     if (!existingStudent?.isVerified) {
       return;
@@ -149,6 +182,232 @@ export class VerificationController {
   }
 
   /**
+   * Prevents active staff with a standardized nickname from re-verifying as a candidate.
+   *
+   * @param member the interacting guild member
+   * @returns an ALREADY_ACTIVE VerificationOutcome or null if not yet standardized staff
+   */
+  private async checkActiveStaffVerification(
+    member: GuildMember,
+  ): Promise<VerificationOutcome | null> {
+    const staffTier = this.resourceResolver.resolveStaffTier(member);
+    if (staffTier === null) {
+      return null;
+    }
+
+    const expectedPrefix =
+      this.resourceResolver.getPrefixForStaffTier(staffTier);
+    const expectedNickname = InputValidator.rewriteStandardizedNicknamePrefix(
+      member.nickname,
+      this.appConfig.bot,
+      expectedPrefix,
+    );
+    if (expectedNickname === null) {
+      return null;
+    }
+
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      member.id,
+      async () => {
+        this.studentRepository.deleteByDiscordId(member.id);
+        const targetRoles = MemberMutationHelper.getRoleIdsForStaffTransition(
+          member,
+          this.appConfig.permissions,
+          "KEEP",
+        );
+        const hierarchyWarning = await this.syncStaffMemberIfNeeded(
+          member,
+          expectedNickname,
+          targetRoles,
+        );
+        return {
+          status: "ALREADY_ACTIVE" as const,
+          title: this.appConfig.messages.verificationAlreadyVerifiedTitle,
+          description: `Your staff account is already verified and active.\n\nNickname: \`${expectedNickname}\``,
+          appliedNickname: expectedNickname,
+          nicknameHierarchyWarning: hierarchyWarning ?? undefined,
+        };
+      },
+    );
+
+    return lockResult.acquired
+      ? lockResult.value
+      : this.buildLockedOutcome(member.id);
+  }
+
+  /**
+   * Promotes a verified candidate or switches an existing staff member's prefix on role change.
+   *
+   * @param member the updated Discord guild member
+   * @param staffTier the resolved highest-precedence staff tier
+   */
+  private async handleStaffPromotionOrSwitch(
+    member: GuildMember,
+    staffTier: "MOD" | "SUP",
+  ): Promise<void> {
+    await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      member.id,
+      async () => {
+        const targetPrefix =
+          this.resourceResolver.getPrefixForStaffTier(staffTier);
+        const existingStudent = this.studentRepository.findByDiscordId(
+          member.id,
+        );
+
+        const nextNickname = existingStudent
+          ? InputValidator.formatNickname(
+              existingStudent.fullName,
+              existingStudent.studentId,
+              this.appConfig.bot,
+              targetPrefix,
+            )
+          : InputValidator.rewriteStandardizedNicknamePrefix(
+              member.nickname,
+              this.appConfig.bot,
+              targetPrefix,
+            );
+
+        if (nextNickname === null) {
+          return;
+        }
+
+        if (existingStudent) {
+          this.studentRepository.deleteByDiscordId(member.id);
+        }
+
+        const targetRoleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+          member,
+          this.appConfig.permissions,
+          "KEEP",
+        );
+        await this.syncStaffMemberIfNeeded(member, nextNickname, targetRoleIds);
+        Logger.info(
+          "VerificationController",
+          "Applied staff promotion or prefix switch",
+          {
+            discordId: member.id,
+            staffTier,
+            nickname: nextNickname,
+          },
+        );
+      },
+    );
+  }
+
+  /**
+   * Resets nickname, candidate roles, and SQLite record when all staff roles are removed.
+   *
+   * @param member the downgraded Discord guild member
+   */
+  private async handleStaffDowngradeReset(member: GuildMember): Promise<void> {
+    await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      member.id,
+      async () => {
+        this.studentRepository.deleteByDiscordId(member.id);
+        const preservedRoleIds = MemberMutationHelper.getPreservedRoleIds(
+          member,
+          this.appConfig.permissions,
+        );
+        await MemberMutationHelper.applyMemberNicknameAndRoles(
+          member,
+          null,
+          preservedRoleIds,
+          "VerificationController",
+        );
+        Logger.info(
+          "VerificationController",
+          "Reset downgraded staff member profile for re-verification",
+          { discordId: member.id },
+        );
+      },
+    );
+  }
+
+  /**
+   * Applies nickname and role cleanup for a staff member only when Discord state differs.
+   *
+   * @param member the target Discord guild member
+   * @param expectedNickname target MOD or SUP nickname
+   * @param targetRoleIds target preserved plus staff role IDs
+   * @returns optional hierarchy warning message
+   */
+  private async syncStaffMemberIfNeeded(
+    member: GuildMember,
+    expectedNickname: string,
+    targetRoleIds: string[],
+  ): Promise<string | null> {
+    const currentRoleIds = new Set(
+      member.roles.cache
+        .filter((role) => role.id !== member.guild.id)
+        .map((role) => role.id),
+    );
+    const rolesMatch =
+      targetRoleIds.length === currentRoleIds.size &&
+      targetRoleIds.every((roleId) => currentRoleIds.has(roleId));
+    const nicknameMatches =
+      member.nickname === expectedNickname ||
+      member.id === member.guild.ownerId;
+
+    if (rolesMatch && nicknameMatches) {
+      return null;
+    }
+
+    return await MemberMutationHelper.applyMemberNicknameAndRoles(
+      member,
+      expectedNickname,
+      targetRoleIds,
+      "VerificationController",
+    );
+  }
+
+  /**
+   * Checks whether a nickname currently carries the configured moderator or supporter prefix.
+   *
+   * @param nickname current guild nickname or null
+   * @returns true if standardized and prefixed with moderatorPrefix or supporterPrefix
+   */
+  private hasStaffNicknamePrefix(nickname: string | null): boolean {
+    if (
+      !nickname ||
+      !InputValidator.hasStandardizedNickname(nickname, this.appConfig.bot)
+    ) {
+      return false;
+    }
+
+    const { clubCohortPrefix, moderatorPrefix, supporterPrefix } =
+      this.appConfig.bot;
+    const candidateEquivalent =
+      InputValidator.rewriteStandardizedNicknamePrefix(
+        nickname,
+        this.appConfig.bot,
+        clubCohortPrefix,
+      );
+    const moderatorMatches =
+      moderatorPrefix !== clubCohortPrefix &&
+      nickname ===
+        InputValidator.rewriteStandardizedNicknamePrefix(
+          nickname,
+          this.appConfig.bot,
+          moderatorPrefix,
+        );
+    const supporterMatches =
+      supporterPrefix !== clubCohortPrefix &&
+      nickname ===
+        InputValidator.rewriteStandardizedNicknamePrefix(
+          nickname,
+          this.appConfig.bot,
+          supporterPrefix,
+        );
+
+    return (
+      candidateEquivalent !== null && (moderatorMatches || supporterMatches)
+    );
+  }
+
+  /**
    * Executes new candidate validation, conflict detection, Discord mutation, and persistence.
    *
    * @param member the Discord guild member requesting verification
@@ -161,6 +420,12 @@ export class VerificationController {
     rawFullName: string,
     rawStudentId: string,
   ): Promise<VerificationOutcome> {
+    const staffOutcome =
+      await this.checkActiveStaffVerificationInsideLock(member);
+    if (staffOutcome !== null) {
+      return staffOutcome;
+    }
+
     const existingByDiscord = this.studentRepository.findByDiscordId(member.id);
     if (existingByDiscord?.isVerified) {
       return await this.restoreExistingStudent(member, existingByDiscord);
@@ -224,6 +489,51 @@ export class VerificationController {
       studentRecord,
       nicknameResult.nickname,
     );
+  }
+
+  /**
+   * Checks active staff status when already executing inside the per-member mutex lock.
+   *
+   * @param member the interacting guild member
+   * @returns an ALREADY_ACTIVE VerificationOutcome or null
+   */
+  private async checkActiveStaffVerificationInsideLock(
+    member: GuildMember,
+  ): Promise<VerificationOutcome | null> {
+    const staffTier = this.resourceResolver.resolveStaffTier(member);
+    if (staffTier === null) {
+      return null;
+    }
+
+    const expectedPrefix =
+      this.resourceResolver.getPrefixForStaffTier(staffTier);
+    const expectedNickname = InputValidator.rewriteStandardizedNicknamePrefix(
+      member.nickname,
+      this.appConfig.bot,
+      expectedPrefix,
+    );
+    if (expectedNickname === null) {
+      return null;
+    }
+
+    this.studentRepository.deleteByDiscordId(member.id);
+    const targetRoles = MemberMutationHelper.getRoleIdsForStaffTransition(
+      member,
+      this.appConfig.permissions,
+      "KEEP",
+    );
+    const hierarchyWarning = await this.syncStaffMemberIfNeeded(
+      member,
+      expectedNickname,
+      targetRoles,
+    );
+    return {
+      status: "ALREADY_ACTIVE",
+      title: this.appConfig.messages.verificationAlreadyVerifiedTitle,
+      description: `Your staff account is already verified and active.\n\nNickname: \`${expectedNickname}\``,
+      appliedNickname: expectedNickname,
+      nicknameHierarchyWarning: hierarchyWarning ?? undefined,
+    };
   }
 
   /**
@@ -299,11 +609,11 @@ export class VerificationController {
   }
 
   /**
-   * Applies Discord nickname and roles for a new candidate and persists the record to SQLite.
+   * Applies Discord nickname and roles for a new candidate or pre-assigned staff member.
    *
    * @param member the Discord guild member
-   * @param studentRecord the new Student record
-   * @param nickname the formatted Discord nickname
+   * @param studentRecord the validated Student identity fields
+   * @param nickname the formatted candidate nickname
    * @returns a VERIFIED VerificationOutcome
    */
   private async commitNewStudentRegistration(
@@ -311,6 +621,15 @@ export class VerificationController {
     studentRecord: Student,
     nickname: string,
   ): Promise<VerificationOutcome> {
+    const staffTier = this.resourceResolver.resolveStaffTier(member);
+    if (staffTier !== null) {
+      return await this.commitPreAssignedStaffVerification(
+        member,
+        studentRecord,
+        staffTier,
+      );
+    }
+
     const targetRoleIds = MemberMutationHelper.buildDesiredRoleIds(
       member,
       studentRecord,
@@ -343,6 +662,65 @@ export class VerificationController {
       description: `Your identity has been verified.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${nickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nAssigned Role: <@&${verifiedRoleId}>${roundLine}`,
       student: studentRecord,
       appliedNickname: nickname,
+      nicknameHierarchyWarning: hierarchyWarning ?? undefined,
+    };
+  }
+
+  /**
+   * Completes verification for a member pre-assigned moderator or supporter before verifying.
+   *
+   * @param member the Discord guild member
+   * @param studentRecord the validated identity fields
+   * @param staffTier the pre-assigned staff tier
+   * @returns a VERIFIED VerificationOutcome reflecting staff promotion
+   */
+  private async commitPreAssignedStaffVerification(
+    member: GuildMember,
+    studentRecord: Student,
+    staffTier: "MOD" | "SUP",
+  ): Promise<VerificationOutcome> {
+    const staffPrefix = this.resourceResolver.getPrefixForStaffTier(staffTier);
+    const staffNickname = InputValidator.formatNickname(
+      studentRecord.fullName,
+      studentRecord.studentId,
+      this.appConfig.bot,
+      staffPrefix,
+    );
+    const targetRoleIds = MemberMutationHelper.getRoleIdsForStaffTransition(
+      member,
+      this.appConfig.permissions,
+      "KEEP",
+    );
+    const hierarchyWarning =
+      await MemberMutationHelper.applyMemberNicknameAndRoles(
+        member,
+        staffNickname,
+        targetRoleIds,
+        "VerificationController",
+      );
+
+    this.studentRepository.deleteByDiscordId(member.id);
+    const staffRoleId =
+      staffTier === "MOD"
+        ? this.resourceResolver.getModeratorRoleId()
+        : this.resourceResolver.getSupporterRoleId();
+
+    Logger.info(
+      "VerificationController",
+      "Verified and promoted pre-assigned staff member",
+      {
+        discordId: member.id,
+        studentId: studentRecord.studentId,
+        staffTier,
+        nickname: staffNickname,
+      },
+    );
+
+    return {
+      status: "VERIFIED",
+      title: this.appConfig.messages.verificationSuccessTitle,
+      description: `Your identity has been verified and updated for staff.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${staffNickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nStaff Role: <@&${staffRoleId}>`,
+      appliedNickname: staffNickname,
       nicknameHierarchyWarning: hierarchyWarning ?? undefined,
     };
   }
