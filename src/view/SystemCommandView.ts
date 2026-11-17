@@ -120,6 +120,30 @@ export class SystemCommandView {
       )
       .addSubcommand((subcommand) =>
         subcommand
+          .setName("staff")
+          .setDescription(
+            "Promote a verified member to moderator or supporter, or reset staff roles.",
+          )
+          .addUserOption((option) =>
+            option
+              .setName("user")
+              .setDescription("Target Discord member.")
+              .setRequired(true),
+          )
+          .addStringOption((option) =>
+            option
+              .setName("role")
+              .setDescription("Staff role to assign or none to reset.")
+              .setRequired(true)
+              .addChoices(
+                { name: "moderator", value: "moderator" },
+                { name: "supporter", value: "supporter" },
+                { name: "none", value: "none" },
+              ),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
           .setName("reload")
           .setDescription(
             "Validate and hot-reload config.yaml without restarting the bot.",
@@ -198,6 +222,11 @@ export class SystemCommandView {
             : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
         ],
       });
+      return;
+    }
+
+    if (subcommand === "staff") {
+      await this.handleStaffSubcommand(interaction);
       return;
     }
 
@@ -295,6 +324,58 @@ export class SystemCommandView {
           "Verification Gate Updated",
           `Candidate verification is now \`${enabled ? "OPEN" : "CLOSED"}\`.${panelNote}`,
         ),
+      ],
+    });
+  }
+
+  /**
+   * Executes /system staff to promote, switch, or reset a member's staff role and nickname.
+   *
+   * @param interaction the deferred slash command interaction
+   */
+  private async handleStaffSubcommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guild) {
+      return;
+    }
+
+    const targetUser = interaction.options.getUser("user", true);
+    const targetRole = interaction.options.getString("role", true) as
+      "moderator" | "supporter" | "none";
+
+    const targetMember = await interaction.guild.members
+      .fetch(targetUser.id)
+      .catch(() => null);
+    if (!targetMember) {
+      await interaction.editReply({
+        embeds: [
+          EmbedFactory.buildErrorEmbed(
+            "Invalid Target",
+            "The target Discord member could not be found in this server.",
+          ),
+        ],
+      });
+      return;
+    }
+
+    const outcome = await this.studentController.manageStaffRole(
+      targetMember,
+      targetRole,
+    );
+    if (outcome.success) {
+      Logger.info("SystemCommandView", "Updated member staff role", {
+        callerId: interaction.user.id,
+        targetId: targetMember.id,
+        role: targetRole,
+      });
+    }
+
+    await interaction.editReply({
+      embeds: [
+        outcome.success
+          ? EmbedFactory.buildSuccessEmbed(outcome.title, outcome.description)
+          : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
       ],
     });
   }
