@@ -459,6 +459,8 @@ export class StudentController {
       isRound1: updates.isRound1,
       isRound2: updates.isRound2,
       isRound3: updates.isRound3,
+      isModerator: existingStudent.isModerator,
+      isSupporter: existingStudent.isSupporter,
     };
 
     const discordNote = await this.applyUpdatedMemberState(
@@ -817,6 +819,8 @@ export class StudentController {
       isRound3: existingByDiscord
         ? existingByDiscord.isRound3
         : defaultRound === "round-3",
+      isModerator: false,
+      isSupporter: false,
     };
   }
 

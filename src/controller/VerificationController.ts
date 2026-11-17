@@ -605,6 +605,8 @@ export class VerificationController {
         defaultRound === "round-3",
       isRound2: defaultRound === "round-2" || defaultRound === "round-3",
       isRound3: defaultRound === "round-3",
+      isModerator: false,
+      isSupporter: false,
     };
   }
 

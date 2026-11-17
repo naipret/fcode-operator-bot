@@ -14,6 +14,8 @@ export interface Student {
   isRound1: boolean;
   isRound2: boolean;
   isRound3: boolean;
+  isModerator: boolean;
+  isSupporter: boolean;
 }
 
 /**

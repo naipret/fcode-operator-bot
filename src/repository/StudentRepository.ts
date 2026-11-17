@@ -12,6 +12,8 @@ interface StudentRow {
   is_round_1: number;
   is_round_2: number;
   is_round_3: number;
+  is_moderator: number;
+  is_supporter: number;
 }
 
 /**
@@ -132,15 +134,19 @@ export class StudentRepository {
           is_verified,
           is_round_1,
           is_round_2,
-          is_round_3
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          is_round_3,
+          is_moderator,
+          is_supporter
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(student_id) DO UPDATE SET
           full_name = excluded.full_name,
           discord_id = excluded.discord_id,
           is_verified = excluded.is_verified,
           is_round_1 = excluded.is_round_1,
           is_round_2 = excluded.is_round_2,
-          is_round_3 = excluded.is_round_3
+          is_round_3 = excluded.is_round_3,
+          is_moderator = excluded.is_moderator,
+          is_supporter = excluded.is_supporter
       `,
       )
       .run(
@@ -151,6 +157,8 @@ export class StudentRepository {
         student.isRound1 ? 1 : 0,
         student.isRound2 ? 1 : 0,
         student.isRound3 ? 1 : 0,
+        student.isModerator ? 1 : 0,
+        student.isSupporter ? 1 : 0,
       );
   }
 
@@ -228,6 +236,21 @@ export class StudentRepository {
     const connection = this.databaseClient.getConnection();
     const rows = connection
       .prepare("SELECT * FROM students WHERE is_verified = 1")
+      .all() as unknown as StudentRow[];
+    return rows.map((row) => this.mapRowToStudent(row));
+  }
+
+  /**
+   * Lists all active candidate and staff records stored in SQLite for Discord reconciliation.
+   *
+   * @returns an array of all active Student entities
+   */
+  public listAllActiveMembers(): Student[] {
+    const connection = this.databaseClient.getConnection();
+    const rows = connection
+      .prepare(
+        "SELECT * FROM students WHERE is_verified = 1 OR is_moderator = 1 OR is_supporter = 1",
+      )
       .all() as unknown as StudentRow[];
     return rows.map((row) => this.mapRowToStudent(row));
   }
@@ -366,6 +389,8 @@ export class StudentRepository {
       isRound1: row.is_round_1 === 1,
       isRound2: row.is_round_2 === 1,
       isRound3: row.is_round_3 === 1,
+      isModerator: row.is_moderator === 1,
+      isSupporter: row.is_supporter === 1,
     };
   }
 }

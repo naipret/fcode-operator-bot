@@ -135,7 +135,9 @@ export class DatabaseClient {
         is_verified INTEGER NOT NULL DEFAULT 1,
         is_round_1 INTEGER NOT NULL DEFAULT 1,
         is_round_2 INTEGER NOT NULL DEFAULT 0,
-        is_round_3 INTEGER NOT NULL DEFAULT 0
+        is_round_3 INTEGER NOT NULL DEFAULT 0,
+        is_moderator INTEGER NOT NULL DEFAULT 0,
+        is_supporter INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE INDEX IF NOT EXISTS idx_students_discord_id ON students(discord_id);
@@ -190,12 +192,27 @@ export class DatabaseClient {
       { user_version: number } | undefined;
     const currentVersion = versionRow?.user_version ?? 0;
 
-    if (currentVersion >= 1) {
+    if (currentVersion >= 2) {
       return;
     }
 
+    const columns = this.database
+      .prepare("PRAGMA table_info(students)")
+      .all() as unknown as { name: string }[];
+    const columnNames = new Set(columns.map((column) => column.name));
+
     this.runInTransaction(() => {
-      this.database.exec("PRAGMA user_version = 1;");
+      if (!columnNames.has("is_moderator")) {
+        this.database.exec(
+          "ALTER TABLE students ADD COLUMN is_moderator INTEGER NOT NULL DEFAULT 0;",
+        );
+      }
+      if (!columnNames.has("is_supporter")) {
+        this.database.exec(
+          "ALTER TABLE students ADD COLUMN is_supporter INTEGER NOT NULL DEFAULT 0;",
+        );
+      }
+      this.database.exec("PRAGMA user_version = 2;");
     });
   }
 }
