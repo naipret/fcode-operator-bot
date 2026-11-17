@@ -62,6 +62,19 @@ export const appConfigSchema = z.object({
             "bot.fullNameRegex must be a valid Unicode regular expression.",
         });
       }
+      const normalizedPrefixes = [
+        botConfig.clubCohortPrefix.toUpperCase(),
+        botConfig.moderatorPrefix.toUpperCase(),
+        botConfig.supporterPrefix.toUpperCase(),
+      ];
+      if (new Set(normalizedPrefixes).size !== normalizedPrefixes.length) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["moderatorPrefix"],
+          message:
+            "bot.clubCohortPrefix, bot.moderatorPrefix, and bot.supporterPrefix must be distinct.",
+        });
+      }
     }),
   verification: z.object({
     enabledByDefault: z.boolean(),

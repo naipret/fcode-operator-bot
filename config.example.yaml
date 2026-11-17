@@ -30,7 +30,8 @@ verification:
 
 # ------------------------------------------------------------------------------
 # - ownerRoleId    : Grants full access (/system, /round, /student)
-# - moderatorRoleId: Grants student support access only (/student).
+# - moderatorRoleId: Grants moderator access (/student) and MOD prefix
+# - supporterRoleId: Grants support access and SUP prefix
 # ------------------------------------------------------------------------------
 permissions:
   ownerRoleId: ""
