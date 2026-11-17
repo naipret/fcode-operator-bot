@@ -57,7 +57,7 @@ fcode-operator-bot/
 
 1. Create or reference the F22 recruitment server layout using the [Discord Server Template](https://discord.new/K7yMwH3Rx7B4) and adjust roles, channels, and permissions to match your recruitment cycle.
 2. Enable the Server Members Intent under Privileged Gateway Intents in the Discord Developer Portal, and invite the bot with the `bot` and `applications.commands` scopes.
-3. Position the bot's managed role above `moderator`, `verified`, and `round-1` through `round-3` so the bot can update candidate nicknames and assign roles.
+3. Position the bot's managed role above `moderator`, `supporter`, `verified`, and `round-1` through `round-3` so the bot can update candidate and staff nicknames and assign roles.
 4. Copy `.env.example` to `.env` and populate `DISCORD_APPLICATION_TOKEN`, `DISCORD_APPLICATION_ID`, and `DISCORD_SERVER_ID`.
 5. Copy `config.example.yaml` to `config.yaml` and populate `permissions.ownerRoleId`, `permissions.moderatorRoleId`, `permissions.supporterRoleId`, `permissions.verifiedRoleId`, and `permissions.roundRoleIds`. Populate `logging.discord.channelId` if `logging.discord.enabled` is `true`.
 

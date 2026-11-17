@@ -18,7 +18,7 @@ Each class and module owns one cohesive responsibility:
 
 ### Open and Closed Principle
 
-Recruitment parameters, cohort ranges (`allowedCohorts`), cohort prefixes (`clubCohortPrefix`), `defaultRound`, and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `verifiedRoleId`, `roundRoleIds`) reside in `config.yaml`. Transitioning to a new cohort prefix or deploying on a new server template requires editing `config.yaml` and running `/system reload` rather than modifying controller source code.
+Recruitment parameters, cohort ranges (`allowedCohorts`), cohort and staff prefixes (`clubCohortPrefix`, `moderatorPrefix`, `supporterPrefix`), `defaultRound`, and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `supporterRoleId`, `verifiedRoleId`, `roundRoleIds`) reside in `config.yaml`. Transitioning to a new cohort prefix or deploying on a new server template requires editing `config.yaml` and running `/system reload` rather than modifying controller source code.
 
 ### Interface Segregation Principle
 
@@ -40,7 +40,7 @@ Production bot runtime under `src/` is strictly decoupled from local server prov
 
 Shared operations are centralized in utility helpers:
 
-1. Discord authorization checks (`isOwnerOrHasOwnerRole`, `isModeratorOrOwner`) and Snowflake ID resolution (`getRoundRole`, `getRoundRoleId`, `getVerifiedRoleId`) reside in `GuildResourceResolver`.
+1. Discord authorization checks (`isOwnerOrHasOwnerRole`, `isModeratorOrOwner`), staff tier resolution (`resolveStaffTier`), and Snowflake ID resolution (`getRoundRole`, `getRoundRoleId`, `getVerifiedRoleId`) reside in `GuildResourceResolver`.
 2. Target parsing for mixed `@mention` and student identifier strings resides in `InputValidator.parseTargetTokens`.
 3. Success, warning, and error embeds use `EmbedFactory` to guarantee uniform visual output across all commands.
 
