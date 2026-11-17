@@ -126,24 +126,41 @@ class DailyLogDestination extends Writable {
         return;
       }
       callback();
-    } catch (err) {
-      callback(err instanceof Error ? err : new Error(String(err)));
+    } catch (streamError) {
+      callback(streamError instanceof Error ? streamError : new Error(String(streamError)));
     }
+  }
+
+  /**
+   * Flushes and closes the underlying file write stream asynchronously.
+   */
+  public async closeStream(): Promise<void> {
+    if (this.fileStream === null) {
+      return;
+    }
+    const stream = this.fileStream;
+    this.fileStream = null;
+    await new Promise<void>((resolve) => {
+      stream.end(() => resolve());
+    });
   }
 
   /**
    * Closes the underlying file stream when the destination is destroyed.
    *
-   * @param err optional stream error
+   * @param streamError optional stream error
    * @param callback completion callback
    */
-  public override _destroy(err: Error | null, callback: (error?: Error | null) => void): void {
+  public override _destroy(
+    streamError: Error | null,
+    callback: (error?: Error | null) => void,
+  ): void {
     if (this.fileStream !== null) {
-      this.fileStream.end(() => callback(err));
+      this.fileStream.end(() => callback(streamError));
       this.fileStream = null;
       return;
     }
-    callback(err);
+    callback(streamError);
   }
 }
 
@@ -239,10 +256,21 @@ class DiscordLogDestination extends Writable {
     }
 
     for (const block of blocks) {
-      await channel.send({ content: `\`\`\`\n${block}\n\`\`\`` }).catch((err: unknown) => {
-        process.stderr.write(`DiscordLogDestination send failed: ${String(err)}\n`);
+      await channel.send({ content: `\`\`\`\n${block}\n\`\`\`` }).catch((sendError: unknown) => {
+        process.stderr.write(`DiscordLogDestination send failed: ${String(sendError)}\n`);
       });
     }
+  }
+
+  /**
+   * Cancels any pending batch timer and flushes remaining buffered log lines to Discord.
+   */
+  public async flushAndClose(): Promise<void> {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    await this.flush();
   }
 
   /**
@@ -278,15 +306,18 @@ class DiscordLogDestination extends Writable {
   /**
    * Clears pending flush timers when the destination is destroyed.
    *
-   * @param err optional stream error
+   * @param streamError optional stream error
    * @param callback completion callback
    */
-  public override _destroy(err: Error | null, callback: (error?: Error | null) => void): void {
+  public override _destroy(
+    streamError: Error | null,
+    callback: (error?: Error | null) => void,
+  ): void {
     if (this.flushTimer !== null) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
-    callback(err);
+    callback(streamError);
   }
 }
 
@@ -306,6 +337,22 @@ function createStartupLogger(): PinoLogger {
 }
 
 let pinoInstance: PinoLogger = createStartupLogger();
+let activeDailyDestination: DailyLogDestination | null = null;
+let activeDiscordDestination: DiscordLogDestination | null = null;
+
+/**
+ * Releases active file and Discord log destinations before reconfiguring or shutting down.
+ */
+function releaseActiveDestinations(): void {
+  if (activeDailyDestination !== null) {
+    activeDailyDestination.destroy();
+    activeDailyDestination = null;
+  }
+  if (activeDiscordDestination !== null) {
+    activeDiscordDestination.destroy();
+    activeDiscordDestination = null;
+  }
+}
 
 /**
  * Attaches the ready Discord client so discord-tier logs can be forwarded to the configured channel.
@@ -317,19 +364,37 @@ function attachDiscordClient(client: Client): void {
 }
 
 /**
+ * Flushes pending Discord log batches and closes active file streams prior to process exit.
+ */
+async function shutdown(): Promise<void> {
+  if (activeDiscordDestination !== null) {
+    await activeDiscordDestination.flushAndClose().catch(() => undefined);
+    activeDiscordDestination.destroy();
+    activeDiscordDestination = null;
+  }
+  if (activeDailyDestination !== null) {
+    await activeDailyDestination.closeStream().catch(() => undefined);
+    activeDailyDestination = null;
+  }
+  attachedDiscordClient = null;
+}
+
+/**
  * Reconfigures the logger outputs and independent severity thresholds from config.yaml.
  *
  * @param config validated logging configuration block
  */
 function configure(config: LoggingConfig): void {
+  releaseActiveDestinations();
   const streams: Array<{ level: LogLevel; stream: DestinationStream }> = [];
   const enabledLevels: LogLevel[] = [];
 
   if (config.file.enabled) {
     enabledLevels.push(config.file.level);
+    activeDailyDestination = new DailyLogDestination(config.file.directory, config.file.maxFiles);
     streams.push({
       level: config.file.level,
-      stream: new DailyLogDestination(config.file.directory, config.file.maxFiles),
+      stream: activeDailyDestination,
     });
   }
 
@@ -345,9 +410,10 @@ function configure(config: LoggingConfig): void {
 
   if (config.discord.enabled && config.discord.channelId.trim().length > 0) {
     enabledLevels.push(config.discord.level);
+    activeDiscordDestination = new DiscordLogDestination(config.discord.channelId);
     streams.push({
       level: config.discord.level,
-      stream: new DiscordLogDestination(config.discord.channelId),
+      stream: activeDiscordDestination,
     });
   }
 
@@ -431,6 +497,7 @@ function error(context: string, message: string, errorValue?: unknown): void {
 export const Logger = {
   attachDiscordClient,
   configure,
+  shutdown,
   debug,
   info,
   warn,
