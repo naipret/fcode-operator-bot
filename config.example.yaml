@@ -1,9 +1,3 @@
-# ------------------------------------------------------------------------------
-# - clubCohortPrefix        : Prefix for nicknames (F22_Name_ID) and DB file
-#                             naming (./data/recruitment-f22.db).
-# - allowedCohorts          : Permitted two-digit eligible cohort numbers.
-# - allowedStudentIdPrefixes: Permitted two-letter campus and major prefixes.
-# ------------------------------------------------------------------------------
 bot:
   clubCohortPrefix: 'F22'
   maxNicknameLength: 32
@@ -33,9 +27,8 @@ verification:
   defaultRound: 'none'
 
 # ------------------------------------------------------------------------------
-# - ownerRoleId    : Grants full administrative access (/round, /system,
-#                    /student) equivalent to the Discord Server Owner.
-# - moderatorRoleId: Grants student support access (/student commands only).
+# - ownerRoleId    : Grants full access (/system, /round, /student)
+# - moderatorRoleId: Grants student support access only (/student).
 # ------------------------------------------------------------------------------
 permissions:
   ownerRoleId: ''
@@ -47,15 +40,14 @@ permissions:
     round3: ''
 
 # ------------------------------------------------------------------------------
-# - sync.enabled: Periodically pushes direct manual edits made inside the .db
-#                 file to Discord. Setting this to false does NOT disable normal
+# - sync.enabled: Setting this to false does NOT disable normal
 #                 sync (startup sync, /verify, /student, /round,
 #                 guildMemberUpdate, and manual /system sync still run).
 # ------------------------------------------------------------------------------
 database:
   directory: './data'
   sync:
-    enabled: true
+    enabled: false
     intervalMinutes: 5
   backup:
     enabled: true
