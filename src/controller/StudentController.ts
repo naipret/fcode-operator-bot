@@ -1,19 +1,31 @@
-import { DiscordAPIError, type Guild, type GuildMember } from 'discord.js';
+import { DiscordAPIError, type Guild } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
 import type { Student } from '../model/Student.js';
 import type { StudentRepository } from '../repository/StudentRepository.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { InputValidator } from '../util/InputValidator.js';
 import { Logger } from '../util/Logger.js';
+import { MemberMutationHelper } from '../util/MemberMutationHelper.js';
 
 /**
- * Result returned by manual student lookup, register, and reset commands.
+ * Result returned by manual student lookup, register, update, and reset commands.
  */
 export interface StudentActionOutcome {
   success: boolean;
   title: string;
   description: string;
   student?: Student;
+}
+
+/**
+ * Explicit update payload for /student update supporting independent round flags.
+ */
+export interface StudentUpdateInput {
+  fullName?: string | null;
+  studentId?: string | null;
+  isRound1: boolean;
+  isRound2: boolean;
+  isRound3: boolean;
 }
 
 /**
@@ -29,29 +41,33 @@ export interface StudentSyncOutcome {
 }
 
 /**
- * Handles moderator and owner commands for inspecting, registering, resetting, and syncing students.
+ * Handles moderator and owner commands for inspecting, registering, updating, resetting, and syncing students.
  */
 export class StudentController {
   private static readonly DISCORD_MISSING_PERMISSIONS_CODE = 50013;
   private appConfig: AppConfig;
   private readonly studentRepository: StudentRepository;
   private readonly resourceResolver: GuildResourceResolver;
+  private readonly lockedDiscordIds: Set<string>;
 
   /**
-   * Creates a StudentController bound to configuration, repository, and guild resolver.
+   * Creates a StudentController bound to configuration, repository, guild resolver, and lock set.
    *
    * @param appConfig the validated application configuration
    * @param studentRepository the SQLite student repository
    * @param resourceResolver the guild resource resolver
+   * @param lockedDiscordIds shared Set tracking members currently mutated by the bot
    */
   public constructor(
     appConfig: AppConfig,
     studentRepository: StudentRepository,
     resourceResolver: GuildResourceResolver,
+    lockedDiscordIds: Set<string>,
   ) {
     this.appConfig = appConfig;
     this.studentRepository = studentRepository;
     this.resourceResolver = resourceResolver;
+    this.lockedDiscordIds = lockedDiscordIds;
   }
 
   /**
@@ -115,13 +131,7 @@ export class StudentController {
       student.studentId,
       this.appConfig.bot,
     );
-    const rounds = [
-      student.isRound1 ? `<@&${this.resourceResolver.getRoundRoleId('round-1')}>` : null,
-      student.isRound2 ? `<@&${this.resourceResolver.getRoundRoleId('round-2')}>` : null,
-      student.isRound3 ? `<@&${this.resourceResolver.getRoundRoleId('round-3')}>` : null,
-    ]
-      .filter((entry): entry is string => entry !== null)
-      .join(', ');
+    const rounds = this.formatActiveRounds(student);
 
     return {
       success: true,
@@ -131,7 +141,7 @@ export class StudentController {
         `Full Name: \`${student.fullName}\``,
         `Computed Nickname: \`${nickname}\``,
         `Verified: \`${student.isVerified ? 'Yes' : 'No'}\``,
-        `Active Rounds: ${rounds.length > 0 ? rounds : 'None'}`,
+        `Active Rounds: ${rounds}`,
       ].join('\n'),
       student,
     };
@@ -146,7 +156,136 @@ export class StudentController {
    * @returns a StudentActionOutcome describing the applied state
    */
   public async registerStudentManually(
-    member: GuildMember,
+    member: Parameters<typeof MemberMutationHelper.getPreservedRoleIds>[0],
+    rawFullName: string,
+    rawStudentId: string,
+  ): Promise<StudentActionOutcome> {
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      member.id,
+      () => this.executeManualRegistration(member, rawFullName, rawStudentId),
+    );
+    return lockResult.acquired ? lockResult.value : this.buildLockedOutcome();
+  }
+
+  /**
+   * Updates an existing student's independent round flags and optional identity fields.
+   *
+   * @param guild the target Discord guild
+   * @param target unified target string (@mention, Discord ID, or Student ID)
+   * @param updates explicit round flags and optional name or student ID overrides
+   * @returns a StudentActionOutcome describing the applied state
+   */
+  public async updateStudent(
+    guild: Guild,
+    target: string,
+    updates: StudentUpdateInput,
+  ): Promise<StudentActionOutcome> {
+    const existingStudent = this.resolveStudentByTarget(target);
+    if (!existingStudent) {
+      return {
+        success: false,
+        title: 'Student Not Found',
+        description: 'No student record matched the provided user or Student ID.',
+      };
+    }
+
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      existingStudent.discordId,
+      () => this.executeStudentUpdate(guild, existingStudent, updates),
+    );
+    return lockResult.acquired ? lockResult.value : this.buildLockedOutcome();
+  }
+
+  /**
+   * Deletes a student record from SQLite and removes recruitment roles and nickname from Discord.
+   *
+   * @param guild the target Discord guild
+   * @param target unified target string (@mention, Discord ID, or Student ID)
+   * @returns a StudentActionOutcome summarizing the reset
+   */
+  public async resetStudent(guild: Guild, target: string): Promise<StudentActionOutcome> {
+    const existingStudent = this.resolveStudentByTarget(target);
+    if (!existingStudent) {
+      return {
+        success: false,
+        title: 'Student Not Found',
+        description: 'No student record matched the provided user or Student ID.',
+      };
+    }
+
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      existingStudent.discordId,
+      () => this.executeStudentReset(guild, existingStudent),
+    );
+    return lockResult.acquired ? lockResult.value : this.buildLockedOutcome();
+  }
+
+  /**
+   * Synchronizes verified SQLite student records (nickname and roles) to Discord.
+   *
+   * @param guild the target Discord guild
+   * @param target optional unified target string (@mention, Discord ID, or Student ID)
+   * @returns a StudentSyncOutcome summarizing updated, skipped, and failed members
+   */
+  public async syncStudentsToDiscord(
+    guild: Guild,
+    target?: string | null,
+  ): Promise<StudentSyncOutcome> {
+    const targets = this.resolveSyncTargets(target);
+    if (!targets) {
+      return {
+        success: false,
+        title: 'Student Not Found',
+        description: 'No verified student record matched the provided user or Student ID.',
+        updatedCount: 0,
+        skippedCount: 0,
+        failedMembers: [],
+      };
+    }
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const failedMembers: string[] = [];
+
+    for (const student of targets) {
+      const outcome = await this.syncSingleStudent(guild, student);
+      if (outcome === 'UPDATED') {
+        updatedCount += 1;
+      } else if (outcome === 'SKIPPED') {
+        skippedCount += 1;
+      } else {
+        failedMembers.push(outcome);
+      }
+    }
+
+    const failedSummary =
+      failedMembers.length > 0
+        ? `\nFailed (${failedMembers.length}): \`${failedMembers.join(', ')}\``
+        : '';
+
+    return {
+      success: true,
+      title: 'Database Sync Complete',
+      description: `Reconciled \`${targets.length}\` verified student(s) from SQLite to Discord.\n\nUpdated: \`${updatedCount}\`\nAlready In Sync: \`${skippedCount}\`${failedSummary}`,
+      updatedCount,
+      skippedCount,
+      failedMembers,
+    };
+  }
+
+  /**
+   * Executes manual registration validation, Discord update, and SQLite upsert under member lock.
+   *
+   * @param member the target Discord guild member
+   * @param rawFullName the raw full name input
+   * @param rawStudentId the raw student ID input
+   * @returns a StudentActionOutcome
+   */
+  private async executeManualRegistration(
+    member: Parameters<typeof MemberMutationHelper.getPreservedRoleIds>[0],
     rawFullName: string,
     rawStudentId: string,
   ): Promise<StudentActionOutcome> {
@@ -177,39 +316,26 @@ export class StudentController {
       this.studentRepository.deleteByDiscordId(member.id);
     }
 
-    const defaultRound = this.appConfig.verification.defaultRound;
-    const student: Student = {
-      studentId: validation.studentId,
-      fullName: validation.formattedFullName,
-      discordId: member.id,
-      isVerified: true,
-      isRound1: existingByDiscord
-        ? existingByDiscord.isRound1
-        : defaultRound === 'round-1' || defaultRound === 'round-2' || defaultRound === 'round-3',
-      isRound2: existingByDiscord
-        ? existingByDiscord.isRound2
-        : defaultRound === 'round-2' || defaultRound === 'round-3',
-      isRound3: existingByDiscord ? existingByDiscord.isRound3 : defaultRound === 'round-3',
-    };
-
-    const roleIds = this.buildTargetRoleIds(member, student);
-    let warningNote = '';
-
-    try {
-      await member.edit({ nick: validation.nickname, roles: roleIds });
-    } catch (error) {
-      if (
-        error instanceof DiscordAPIError &&
-        error.code === StudentController.DISCORD_MISSING_PERMISSIONS_CODE
-      ) {
-        await member.edit({ roles: roleIds });
-        warningNote = `\n\nNote: Discord blocked nickname mutation due to role hierarchy. Expected nickname: \`${validation.nickname}\`.`;
-      } else {
-        throw error;
-      }
-    }
+    const student = this.buildManualStudentRecord(
+      member.id,
+      validation.studentId,
+      validation.formattedFullName,
+      existingByDiscord,
+    );
+    const roleIds = MemberMutationHelper.buildDesiredRoleIds(
+      member,
+      student,
+      this.appConfig.permissions,
+    );
+    const hierarchyWarning = await MemberMutationHelper.applyMemberNicknameAndRoles(
+      member,
+      validation.nickname,
+      roleIds,
+      'StudentController',
+    );
 
     this.studentRepository.upsertStudent(student);
+    const warningNote = hierarchyWarning ? `\n\nNote: ${hierarchyWarning}` : '';
 
     return {
       success: true,
@@ -220,40 +346,141 @@ export class StudentController {
   }
 
   /**
-   * Deletes a student record from SQLite and removes recruitment roles and nickname from Discord.
+   * Executes independent round and identity updates on SQLite and Discord under member lock.
    *
    * @param guild the target Discord guild
-   * @param target unified target string (@mention, Discord ID, or Student ID)
-   * @returns a StudentActionOutcome summarizing the reset
+   * @param existingStudent the existing SQLite student record
+   * @param updates the requested update fields and explicit round booleans
+   * @returns a StudentActionOutcome
    */
-  public async resetStudent(guild: Guild, target: string): Promise<StudentActionOutcome> {
-    const existingStudent = this.resolveStudentByTarget(target);
-    if (!existingStudent) {
+  private async executeStudentUpdate(
+    guild: Guild,
+    existingStudent: Student,
+    updates: StudentUpdateInput,
+  ): Promise<StudentActionOutcome> {
+    const rawFullName = updates.fullName ?? existingStudent.fullName;
+    const rawStudentId = updates.studentId ?? existingStudent.studentId;
+
+    const validation = InputValidator.buildValidatedNickname(
+      rawFullName,
+      rawStudentId,
+      this.appConfig.bot,
+    );
+    if (!validation.valid) {
       return {
         success: false,
-        title: 'Student Not Found',
-        description: 'No student record matched the provided user or Student ID.',
+        title: 'Invalid Student Information',
+        description: validation.error,
       };
     }
 
+    const existingById = this.studentRepository.findByStudentId(validation.studentId);
+    if (existingById && existingById.discordId !== existingStudent.discordId) {
+      return {
+        success: false,
+        title: 'Duplicate Student ID',
+        description: `Student ID \`${validation.studentId}\` is already assigned to <@${existingById.discordId}>. Reset that record first before reassigning it.`,
+      };
+    }
+
+    const updatedStudent: Student = {
+      studentId: validation.studentId,
+      fullName: validation.formattedFullName,
+      discordId: existingStudent.discordId,
+      isVerified: existingStudent.isVerified,
+      isRound1: updates.isRound1,
+      isRound2: updates.isRound2,
+      isRound3: updates.isRound3,
+    };
+
+    const discordNote = await this.applyUpdatedMemberState(
+      guild,
+      updatedStudent,
+      validation.nickname,
+    );
+
+    if (existingStudent.studentId !== updatedStudent.studentId) {
+      this.studentRepository.deleteByDiscordId(existingStudent.discordId);
+    }
+    this.studentRepository.upsertStudent(updatedStudent);
+
+    const activeRounds = this.formatActiveRounds(updatedStudent);
+    return {
+      success: true,
+      title: 'Student Updated',
+      description: [
+        `Updated <@${updatedStudent.discordId}> successfully.`,
+        '',
+        `Full Name: \`${updatedStudent.fullName}\``,
+        `Nickname: \`${validation.nickname}\``,
+        `Student ID: \`${updatedStudent.studentId}\``,
+        `Active Rounds: ${activeRounds}`,
+        ...(discordNote ? ['', `Note: ${discordNote}`] : []),
+      ].join('\n'),
+      student: updatedStudent,
+    };
+  }
+
+  /**
+   * Applies updated nickname and roles to Discord if the student is currently in the guild.
+   *
+   * @param guild the target Discord guild
+   * @param student the updated Student entity
+   * @param nickname the formatted Discord nickname
+   * @returns an optional notice string if the member left the server or hit hierarchy limits
+   */
+  private async applyUpdatedMemberState(
+    guild: Guild,
+    student: Student,
+    nickname: string,
+  ): Promise<string | null> {
+    const member =
+      guild.members.cache.get(student.discordId) ??
+      (await guild.members.fetch(student.discordId).catch(() => null));
+    if (!member) {
+      return 'Member is not currently in the server; changes are saved in SQLite and will apply on rejoin or sync.';
+    }
+
+    const roleIds = MemberMutationHelper.buildDesiredRoleIds(
+      member,
+      student,
+      this.appConfig.permissions,
+    );
+    return await MemberMutationHelper.applyMemberNicknameAndRoles(
+      member,
+      nickname,
+      roleIds,
+      'StudentController',
+    );
+  }
+
+  /**
+   * Executes Discord role/nickname cleanup and deletes the student record under member lock.
+   *
+   * @param guild the target Discord guild
+   * @param existingStudent the student record to remove
+   * @returns a StudentActionOutcome
+   */
+  private async executeStudentReset(
+    guild: Guild,
+    existingStudent: Student,
+  ): Promise<StudentActionOutcome> {
     const member = await guild.members.fetch(existingStudent.discordId).catch(() => null);
-
     let discordCleanupNote = '';
-    if (member) {
-      const preservedRoles = this.getPreservedRoleIds(member);
 
-      try {
-        await member.edit({ nick: null, roles: preservedRoles });
-      } catch (error) {
-        if (
-          error instanceof DiscordAPIError &&
-          error.code === StudentController.DISCORD_MISSING_PERMISSIONS_CODE
-        ) {
-          discordCleanupNote =
-            '\n\nNote: Could not strip Discord nickname or roles due to role hierarchy.';
-        } else {
-          throw error;
-        }
+    if (member) {
+      const preservedRoles = MemberMutationHelper.getPreservedRoleIds(
+        member,
+        this.appConfig.permissions,
+      );
+      const hierarchyWarning = await MemberMutationHelper.applyMemberNicknameAndRoles(
+        member,
+        null,
+        preservedRoles,
+        'StudentController',
+      );
+      if (hierarchyWarning) {
+        discordCleanupNote = `\n\nNote: ${hierarchyWarning}`;
       }
     }
 
@@ -267,157 +494,181 @@ export class StudentController {
   }
 
   /**
-   * Synchronizes verified SQLite student records (nickname and roles) to Discord.
+   * Resolves the list of verified students targeted by syncStudentsToDiscord.
    *
-   * @param guild the target Discord guild
-   * @param target optional unified target string (@mention, Discord ID, or Student ID)
-   * @returns a StudentSyncOutcome summarizing updated, skipped, and failed members
+   * @param target optional unified target string
+   * @returns array of Student records or null if a specific target was not found
    */
-  public async syncStudentsToDiscord(
-    guild: Guild,
-    target?: string | null,
-  ): Promise<StudentSyncOutcome> {
-    let targets: Student[];
+  private resolveSyncTargets(target?: string | null): Student[] | null {
     if (target && target.trim().length > 0) {
       const matched = this.resolveStudentByTarget(target);
-      if (!matched || !matched.isVerified) {
-        return {
-          success: false,
-          title: 'Student Not Found',
-          description: 'No verified student record matched the provided user or Student ID.',
-          updatedCount: 0,
-          skippedCount: 0,
-          failedMembers: [],
-        };
-      }
-      targets = [matched];
-    } else {
-      targets = this.studentRepository.listAllVerifiedStudents();
+      return matched && matched.isVerified ? [matched] : null;
+    }
+    return this.studentRepository.listAllVerifiedStudents();
+  }
+
+  /**
+   * Reconciles a single student's SQLite state to Discord under per-member lock.
+   *
+   * @param guild the target Discord guild
+   * @param student the student record to reconcile
+   * @returns 'UPDATED', 'SKIPPED', or a descriptive failure label
+   */
+  private async syncSingleStudent(guild: Guild, student: Student): Promise<string> {
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      student.discordId,
+      () => this.reconcileStudentMember(guild, student),
+    );
+    return lockResult.acquired ? lockResult.value : `${student.studentId} (locked)`;
+  }
+
+  /**
+   * Compares and applies a student's expected Discord nickname and roles.
+   *
+   * @param guild the target Discord guild
+   * @param student the student record to apply
+   * @returns 'UPDATED', 'SKIPPED', or a descriptive failure label
+   */
+  private async reconcileStudentMember(guild: Guild, student: Student): Promise<string> {
+    const member =
+      guild.members.cache.get(student.discordId) ??
+      (await guild.members.fetch(student.discordId).catch(() => null));
+    if (!member) {
+      return `${student.studentId} (not in server)`;
     }
 
-    let updatedCount = 0;
-    let skippedCount = 0;
-    const failedMembers: string[] = [];
+    const expectedNickname = InputValidator.formatNickname(
+      student.fullName,
+      student.studentId,
+      this.appConfig.bot,
+    );
+    const desiredRoleIds = MemberMutationHelper.buildDesiredRoleIds(
+      member,
+      student,
+      this.appConfig.permissions,
+    );
+    const currentRoleIds = new Set(
+      member.roles.cache.filter((role) => role.id !== guild.id).map((role) => role.id),
+    );
+    const rolesMatch =
+      desiredRoleIds.length === currentRoleIds.size &&
+      desiredRoleIds.every((roleId) => currentRoleIds.has(roleId));
+    const nicknameMatches = member.nickname === expectedNickname || member.id === guild.ownerId;
 
-    for (const student of targets) {
-      const member =
-        guild.members.cache.get(student.discordId) ??
-        (await guild.members.fetch(student.discordId).catch(() => null));
-      if (!member) {
-        failedMembers.push(`${student.studentId} (not in server)`);
-        continue;
-      }
+    if (rolesMatch && nicknameMatches) {
+      return 'SKIPPED';
+    }
 
-      const expectedNickname = InputValidator.formatNickname(
-        student.fullName,
-        student.studentId,
-        this.appConfig.bot,
-      );
-      const desiredRoleIds = this.buildTargetRoleIds(member, student);
-      const currentRoleIds = new Set(
-        member.roles.cache.filter((role) => role.id !== guild.id).map((role) => role.id),
-      );
-      const rolesMatch =
-        desiredRoleIds.length === currentRoleIds.size &&
-        desiredRoleIds.every((roleId) => currentRoleIds.has(roleId));
-      const nicknameMatches = member.nickname === expectedNickname || member.id === guild.ownerId;
+    try {
+      await member.edit({
+        ...(member.id === guild.ownerId ? {} : { nick: expectedNickname }),
+        roles: desiredRoleIds,
+      });
+      return 'UPDATED';
+    } catch (error) {
+      return await this.handleSyncEditError(member, student, desiredRoleIds, rolesMatch, error);
+    }
+  }
 
-      if (rolesMatch && nicknameMatches) {
-        skippedCount += 1;
-        continue;
-      }
-
+  /**
+   * Handles Discord API errors during sync, retrying role-only edits on 50013 when roles differ.
+   *
+   * @param member the target guild member
+   * @param student the student record being synced
+   * @param desiredRoleIds target role ID array
+   * @param rolesMatch whether Discord roles already match desiredRoleIds
+   * @param error the caught edit error
+   * @returns 'UPDATED' if role fallback succeeded, or studentId on failure
+   */
+  private async handleSyncEditError(
+    member: Parameters<typeof MemberMutationHelper.getPreservedRoleIds>[0],
+    student: Student,
+    desiredRoleIds: string[],
+    rolesMatch: boolean,
+    error: unknown,
+  ): Promise<string> {
+    if (
+      error instanceof DiscordAPIError &&
+      error.code === StudentController.DISCORD_MISSING_PERMISSIONS_CODE &&
+      !rolesMatch
+    ) {
       try {
-        await member.edit({
-          ...(member.id === guild.ownerId ? {} : { nick: expectedNickname }),
-          roles: desiredRoleIds,
-        });
-        updatedCount += 1;
-      } catch (error) {
-        if (
-          error instanceof DiscordAPIError &&
-          error.code === StudentController.DISCORD_MISSING_PERMISSIONS_CODE &&
-          !rolesMatch
-        ) {
-          try {
-            await member.edit({ roles: desiredRoleIds });
-            updatedCount += 1;
-            continue;
-          } catch (fallbackError) {
-            Logger.warn(
-              'StudentController',
-              `Fallback role sync failed for ${student.studentId}: ${String(fallbackError)}`,
-            );
-          }
-        } else {
-          Logger.warn(
-            'StudentController',
-            `Failed syncing ${student.studentId} to Discord: ${String(error)}`,
-          );
-        }
-        failedMembers.push(student.studentId);
+        await member.edit({ roles: desiredRoleIds });
+        return 'UPDATED';
+      } catch (fallbackError) {
+        Logger.warn(
+          'StudentController',
+          `Fallback role sync failed for ${student.studentId}: ${String(fallbackError)}`,
+        );
+        return student.studentId;
       }
     }
 
-    const failedSummary =
-      failedMembers.length > 0
-        ? `\nFailed (${failedMembers.length}): \`${failedMembers.join(', ')}\``
-        : '';
+    Logger.warn(
+      'StudentController',
+      `Failed syncing ${student.studentId} to Discord: ${String(error)}`,
+    );
+    return student.studentId;
+  }
 
+  /**
+   * Builds a Student record for manual registration, preserving existing round flags when present.
+   *
+   * @param discordId the target Discord user ID
+   * @param studentId the validated uppercase student ID
+   * @param fullName the normalized Title Case full name
+   * @param existingByDiscord existing Student record matched by Discord ID, if any
+   * @returns the constructed Student entity
+   */
+  private buildManualStudentRecord(
+    discordId: string,
+    studentId: string,
+    fullName: string,
+    existingByDiscord: Student | null,
+  ): Student {
+    const defaultRound = this.appConfig.verification.defaultRound;
     return {
-      success: true,
-      title: 'Database Sync Complete',
-      description: `Reconciled \`${targets.length}\` verified student(s) from SQLite to Discord.\n\nUpdated: \`${updatedCount}\`\nAlready In Sync: \`${skippedCount}\`${failedSummary}`,
-      updatedCount,
-      skippedCount,
-      failedMembers,
+      studentId,
+      fullName,
+      discordId,
+      isVerified: true,
+      isRound1: existingByDiscord
+        ? existingByDiscord.isRound1
+        : defaultRound === 'round-1' || defaultRound === 'round-2' || defaultRound === 'round-3',
+      isRound2: existingByDiscord
+        ? existingByDiscord.isRound2
+        : defaultRound === 'round-2' || defaultRound === 'round-3',
+      isRound3: existingByDiscord ? existingByDiscord.isRound3 : defaultRound === 'round-3',
     };
   }
 
   /**
-   * Returns role IDs on a member excluding bot-managed verified and round roles.
+   * Formats active round flags into Discord role mentions or "None".
    *
-   * @param member the target guild member
-   * @returns array of preserved Discord role Snowflake IDs
+   * @param student the student domain entity
+   * @returns formatted active round string
    */
-  private getPreservedRoleIds(member: GuildMember): string[] {
-    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
-    const managedRoleIds = new Set<string>([
-      verifiedRoleId,
-      roundRoleIds.round1,
-      roundRoleIds.round2,
-      roundRoleIds.round3,
-    ]);
+  private formatActiveRounds(student: Student): string {
+    const rounds = [
+      student.isRound1 ? `<@&${this.resourceResolver.getRoundRoleId('round-1')}>` : null,
+      student.isRound2 ? `<@&${this.resourceResolver.getRoundRoleId('round-2')}>` : null,
+      student.isRound3 ? `<@&${this.resourceResolver.getRoundRoleId('round-3')}>` : null,
+    ].filter((entry): entry is string => entry !== null);
 
-    return member.roles.cache
-      .filter((role) => role.id !== member.guild.id && !managedRoleIds.has(role.id))
-      .map((role) => role.id);
+    return rounds.length > 0 ? rounds.join(', ') : 'None';
   }
 
   /**
-   * Computes desired Discord role IDs while preserving non-recruitment member roles.
+   * Builds a standardized failure outcome when a member is locked by another concurrent operation.
    *
-   * @param member the target guild member
-   * @param student the student domain record
-   * @returns deduplicated role snowflake IDs
+   * @returns a StudentActionOutcome indicating an active lock
    */
-  private buildTargetRoleIds(member: GuildMember, student: Student): string[] {
-    const roleIds = new Set<string>(this.getPreservedRoleIds(member));
-    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
-
-    if (student.isVerified && member.guild.roles.cache.has(verifiedRoleId)) {
-      roleIds.add(verifiedRoleId);
-    }
-    if (student.isRound1 && member.guild.roles.cache.has(roundRoleIds.round1)) {
-      roleIds.add(roundRoleIds.round1);
-    }
-    if (student.isRound2 && member.guild.roles.cache.has(roundRoleIds.round2)) {
-      roleIds.add(roundRoleIds.round2);
-    }
-    if (student.isRound3 && member.guild.roles.cache.has(roundRoleIds.round3)) {
-      roleIds.add(roundRoleIds.round3);
-    }
-
-    return Array.from(roleIds);
+  private buildLockedOutcome(): StudentActionOutcome {
+    return {
+      success: false,
+      title: 'Operation In Progress',
+      description: 'Another operation is currently updating this member. Please try again shortly.',
+    };
   }
 }

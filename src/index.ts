@@ -145,18 +145,25 @@ async function bootstrap(): Promise<void> {
   const studentRepository = new StudentRepository(databaseClient);
   studentRepository.seedVerificationGateDefault(activeConfig.verification.enabledByDefault);
 
+  const lockedDiscordIds = new Set<string>();
   const resourceResolver = new GuildResourceResolver(activeConfig);
   const verificationController = new VerificationController(
     activeConfig,
     studentRepository,
     resourceResolver,
+    lockedDiscordIds,
   );
   const studentController = new StudentController(
     activeConfig,
     studentRepository,
     resourceResolver,
+    lockedDiscordIds,
   );
-  const roundController = new RoundController(studentRepository, resourceResolver);
+  const roundController = new RoundController(
+    studentRepository,
+    resourceResolver,
+    lockedDiscordIds,
+  );
 
   const verifyView = new VerifyCommandView(
     activeConfig,

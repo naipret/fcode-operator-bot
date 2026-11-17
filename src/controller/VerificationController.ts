@@ -1,37 +1,39 @@
-import { DiscordAPIError, type GuildMember } from 'discord.js';
+import type { GuildMember } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
 import type { Student, VerificationOutcome } from '../model/Student.js';
 import type { StudentRepository } from '../repository/StudentRepository.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { InputValidator } from '../util/InputValidator.js';
 import { Logger } from '../util/Logger.js';
+import { MemberMutationHelper } from '../util/MemberMutationHelper.js';
 
 /**
  * Coordinates candidate verification, instant rejoin restoration, and role synchronization.
  */
 export class VerificationController {
-  private static readonly DISCORD_MISSING_PERMISSIONS_CODE = 50013;
   private appConfig: AppConfig;
   private readonly studentRepository: StudentRepository;
   private readonly resourceResolver: GuildResourceResolver;
-  private readonly inFlightUsers: Set<string>;
+  private readonly lockedDiscordIds: Set<string>;
 
   /**
-   * Creates a VerificationController with its required repository and configuration dependencies.
+   * Creates a VerificationController with its required repository, lock set, and configuration dependencies.
    *
    * @param appConfig the validated application configuration
    * @param studentRepository the SQLite student repository
    * @param resourceResolver the guild resource resolver
+   * @param lockedDiscordIds shared Set tracking members currently mutated by the bot
    */
   public constructor(
     appConfig: AppConfig,
     studentRepository: StudentRepository,
     resourceResolver: GuildResourceResolver,
+    lockedDiscordIds: Set<string>,
   ) {
     this.appConfig = appConfig;
     this.studentRepository = studentRepository;
     this.resourceResolver = resourceResolver;
-    this.inFlightUsers = new Set<string>();
+    this.lockedDiscordIds = lockedDiscordIds;
   }
 
   /**
@@ -64,16 +66,12 @@ export class VerificationController {
       return null;
     }
 
-    if (this.inFlightUsers.has(member.id)) {
-      return this.buildLockedOutcome(member.id);
-    }
-
-    this.inFlightUsers.add(member.id);
-    try {
-      return await this.restoreExistingStudent(member, existingStudent);
-    } finally {
-      this.inFlightUsers.delete(member.id);
-    }
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      member.id,
+      () => this.restoreExistingStudent(member, existingStudent),
+    );
+    return lockResult.acquired ? lockResult.value : this.buildLockedOutcome(member.id);
   }
 
   /**
@@ -89,135 +87,35 @@ export class VerificationController {
     rawFullName: string,
     rawStudentId: string,
   ): Promise<VerificationOutcome> {
-    if (this.inFlightUsers.has(member.id)) {
-      return this.buildLockedOutcome(member.id);
-    }
-
-    this.inFlightUsers.add(member.id);
-    try {
-      const existingByDiscord = this.studentRepository.findByDiscordId(member.id);
-      if (existingByDiscord?.isVerified) {
-        return await this.restoreExistingStudent(member, existingByDiscord);
-      }
-
-      if (!this.studentRepository.isVerificationEnabled()) {
-        Logger.warn('VerificationController', 'Verification rejected because gate is closed', {
-          discordId: member.id,
-        });
-        return {
-          status: 'GATE_CLOSED',
-          title: 'Verification Closed',
-          description: this.appConfig.messages.verificationClosedMessage,
-        };
-      }
-
-      const nicknameResult = InputValidator.buildValidatedNickname(
-        rawFullName,
-        rawStudentId,
-        this.appConfig.bot,
-      );
-      if (!nicknameResult.valid) {
-        if (nicknameResult.reason === 'NICKNAME_TOO_LONG') {
-          Logger.warn(
-            'VerificationController',
-            'Verification rejected because formatted nickname exceeded limit',
-            { discordId: member.id, studentId: rawStudentId },
-          );
-          return {
-            status: 'NICKNAME_TOO_LONG',
-            title: this.appConfig.messages.verificationErrorTitle,
-            description: nicknameResult.error,
-          };
-        }
-
-        Logger.warn('VerificationController', 'Verification rejected due to invalid input', {
-          discordId: member.id,
-          reason: nicknameResult.reason,
-        });
-        return {
-          status: 'INVALID_INPUT',
-          title: this.appConfig.messages.verificationErrorTitle,
-          description: nicknameResult.error,
-        };
-      }
-
-      const existingByStudentId = this.studentRepository.findByStudentId(nicknameResult.studentId);
-      if (existingByStudentId && existingByStudentId.discordId !== member.id) {
-        Logger.warn('VerificationController', 'Verification rejected due to duplicate student ID', {
-          discordId: member.id,
-          studentId: nicknameResult.studentId,
-          existingDiscordId: existingByStudentId.discordId,
-        });
-        return {
-          status: 'CONFLICT',
-          title: this.appConfig.messages.verificationErrorTitle,
-          description: `Student ID \`${nicknameResult.studentId}\` is already verified under another Discord account.`,
-        };
-      }
-
-      const defaultRound = this.appConfig.verification.defaultRound;
-      const studentRecord: Student = {
-        studentId: nicknameResult.studentId,
-        fullName: nicknameResult.formattedFullName,
-        discordId: member.id,
-        isVerified: true,
-        isRound1:
-          defaultRound === 'round-1' || defaultRound === 'round-2' || defaultRound === 'round-3',
-        isRound2: defaultRound === 'round-2' || defaultRound === 'round-3',
-        isRound3: defaultRound === 'round-3',
-      };
-
-      const targetRoleIds = this.computeDesiredRoleIds(member, studentRecord);
-      const hierarchyWarning = await this.applyMemberNicknameAndRoles(
-        member,
-        nicknameResult.nickname,
-        targetRoleIds,
-      );
-
-      this.studentRepository.upsertStudent(studentRecord);
-      Logger.info('VerificationController', 'Registered new student', {
-        discordId: member.id,
-        studentId: studentRecord.studentId,
-        fullName: studentRecord.fullName,
-        nickname: nicknameResult.nickname,
-        defaultRound,
-      });
-
-      const verifiedRoleId = this.resourceResolver.getVerifiedRoleId();
-      const activeRounds = this.formatActiveRoundsSummary(studentRecord);
-      const roundLine = activeRounds !== 'None' ? `\nUnlocked Rounds: ${activeRounds}` : '';
-      return {
-        status: 'VERIFIED',
-        title: this.appConfig.messages.verificationSuccessTitle,
-        description: `Your identity has been verified.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${nicknameResult.nickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nAssigned Role: <@&${verifiedRoleId}>${roundLine}`,
-        student: studentRecord,
-        appliedNickname: nicknameResult.nickname,
-        nicknameHierarchyWarning: hierarchyWarning ?? undefined,
-      };
-    } finally {
-      this.inFlightUsers.delete(member.id);
-    }
+    const lockResult = await MemberMutationHelper.runWithMemberLock(
+      this.lockedDiscordIds,
+      member.id,
+      () => this.executeNewRegistration(member, rawFullName, rawStudentId),
+    );
+    return lockResult.acquired ? lockResult.value : this.buildLockedOutcome(member.id);
   }
 
   /**
-   * Synchronizes manual Discord role additions or removals into local SQLite storage.
+   * Synchronizes manual Discord round role additions or removals into local SQLite storage.
    *
    * @param member the updated Discord guild member from guildMemberUpdate
    */
   public syncMemberRolesToDatabase(member: GuildMember): void {
-    const existingStudent = this.studentRepository.findByDiscordId(member.id);
-    if (!existingStudent) {
+    if (this.lockedDiscordIds.has(member.id)) {
       return;
     }
 
-    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
-    const isVerified = member.roles.cache.has(verifiedRoleId);
+    const existingStudent = this.studentRepository.findByDiscordId(member.id);
+    if (!existingStudent || !existingStudent.isVerified) {
+      return;
+    }
+
+    const { roundRoleIds } = this.appConfig.permissions;
     const isRound1 = member.roles.cache.has(roundRoleIds.round1);
     const isRound2 = member.roles.cache.has(roundRoleIds.round2);
     const isRound3 = member.roles.cache.has(roundRoleIds.round3);
 
     const hasChanged =
-      existingStudent.isVerified !== isVerified ||
       existingStudent.isRound1 !== isRound1 ||
       existingStudent.isRound2 !== isRound2 ||
       existingStudent.isRound3 !== isRound3;
@@ -227,19 +125,186 @@ export class VerificationController {
     }
 
     this.studentRepository.syncRoleStateByDiscordId(member.id, {
-      isVerified,
       isRound1,
       isRound2,
       isRound3,
     });
-    Logger.info('VerificationController', 'Synchronized member role update to database', {
+    Logger.info('VerificationController', 'Synchronized member round role update to database', {
       discordId: member.id,
       studentId: existingStudent.studentId,
-      isVerified,
       isRound1,
       isRound2,
       isRound3,
     });
+  }
+
+  /**
+   * Executes new candidate validation, conflict detection, Discord mutation, and persistence.
+   *
+   * @param member the Discord guild member requesting verification
+   * @param rawFullName the raw full name entered by the user
+   * @param rawStudentId the raw student identifier entered by the user
+   * @returns a structured VerificationOutcome
+   */
+  private async executeNewRegistration(
+    member: GuildMember,
+    rawFullName: string,
+    rawStudentId: string,
+  ): Promise<VerificationOutcome> {
+    const existingByDiscord = this.studentRepository.findByDiscordId(member.id);
+    if (existingByDiscord?.isVerified) {
+      return await this.restoreExistingStudent(member, existingByDiscord);
+    }
+
+    if (!this.studentRepository.isVerificationEnabled()) {
+      Logger.warn('VerificationController', 'Verification rejected because gate is closed', {
+        discordId: member.id,
+      });
+      return {
+        status: 'GATE_CLOSED',
+        title: 'Verification Closed',
+        description: this.appConfig.messages.verificationClosedMessage,
+      };
+    }
+
+    const nicknameResult = InputValidator.buildValidatedNickname(
+      rawFullName,
+      rawStudentId,
+      this.appConfig.bot,
+    );
+    if (!nicknameResult.valid) {
+      return this.buildInvalidInputOutcome(member.id, rawStudentId, nicknameResult);
+    }
+
+    const existingByStudentId = this.studentRepository.findByStudentId(nicknameResult.studentId);
+    if (existingByStudentId && existingByStudentId.discordId !== member.id) {
+      Logger.warn('VerificationController', 'Verification rejected due to duplicate student ID', {
+        discordId: member.id,
+        studentId: nicknameResult.studentId,
+        existingDiscordId: existingByStudentId.discordId,
+      });
+      return {
+        status: 'CONFLICT',
+        title: this.appConfig.messages.verificationErrorTitle,
+        description: `Student ID \`${nicknameResult.studentId}\` is already verified under another Discord account.`,
+      };
+    }
+
+    const studentRecord = this.buildNewStudentRecord(
+      member.id,
+      nicknameResult.studentId,
+      nicknameResult.formattedFullName,
+    );
+    return await this.commitNewStudentRegistration(member, studentRecord, nicknameResult.nickname);
+  }
+
+  /**
+   * Maps an invalid nickname or student ID validation result into a structured VerificationOutcome.
+   *
+   * @param discordId the interacting user's Discord snowflake ID
+   * @param rawStudentId the raw student ID entered by the user
+   * @param nicknameResult the failed nickname validation result
+   * @returns an INVALID_INPUT or NICKNAME_TOO_LONG VerificationOutcome
+   */
+  private buildInvalidInputOutcome(
+    discordId: string,
+    rawStudentId: string,
+    nicknameResult: Extract<
+      ReturnType<typeof InputValidator.buildValidatedNickname>,
+      { valid: false }
+    >,
+  ): VerificationOutcome {
+    if (nicknameResult.reason === 'NICKNAME_TOO_LONG') {
+      Logger.warn(
+        'VerificationController',
+        'Verification rejected because formatted nickname exceeded limit',
+        { discordId, studentId: rawStudentId },
+      );
+      return {
+        status: 'NICKNAME_TOO_LONG',
+        title: this.appConfig.messages.verificationErrorTitle,
+        description: nicknameResult.error,
+      };
+    }
+
+    Logger.warn('VerificationController', 'Verification rejected due to invalid input', {
+      discordId,
+      reason: nicknameResult.reason,
+    });
+    return {
+      status: 'INVALID_INPUT',
+      title: this.appConfig.messages.verificationErrorTitle,
+      description: nicknameResult.error,
+    };
+  }
+
+  /**
+   * Constructs a new Student entity initialized with the configured default round flags.
+   *
+   * @param discordId the Discord user snowflake ID
+   * @param studentId the validated uppercase student ID
+   * @param fullName the normalized Title Case full name
+   * @returns a Student record ready for persistence
+   */
+  private buildNewStudentRecord(discordId: string, studentId: string, fullName: string): Student {
+    const defaultRound = this.appConfig.verification.defaultRound;
+    return {
+      studentId,
+      fullName,
+      discordId,
+      isVerified: true,
+      isRound1:
+        defaultRound === 'round-1' || defaultRound === 'round-2' || defaultRound === 'round-3',
+      isRound2: defaultRound === 'round-2' || defaultRound === 'round-3',
+      isRound3: defaultRound === 'round-3',
+    };
+  }
+
+  /**
+   * Applies Discord nickname and roles for a new candidate and persists the record to SQLite.
+   *
+   * @param member the Discord guild member
+   * @param studentRecord the new Student record
+   * @param nickname the formatted Discord nickname
+   * @returns a VERIFIED VerificationOutcome
+   */
+  private async commitNewStudentRegistration(
+    member: GuildMember,
+    studentRecord: Student,
+    nickname: string,
+  ): Promise<VerificationOutcome> {
+    const targetRoleIds = MemberMutationHelper.buildDesiredRoleIds(
+      member,
+      studentRecord,
+      this.appConfig.permissions,
+    );
+    const hierarchyWarning = await MemberMutationHelper.applyMemberNicknameAndRoles(
+      member,
+      nickname,
+      targetRoleIds,
+      'VerificationController',
+    );
+
+    this.studentRepository.upsertStudent(studentRecord);
+    Logger.info('VerificationController', 'Registered new student', {
+      discordId: member.id,
+      studentId: studentRecord.studentId,
+      fullName: studentRecord.fullName,
+      nickname,
+      defaultRound: this.appConfig.verification.defaultRound,
+    });
+
+    const verifiedRoleId = this.resourceResolver.getVerifiedRoleId();
+    const activeRounds = this.formatActiveRoundsSummary(studentRecord);
+    const roundLine = activeRounds !== 'None' ? `\nUnlocked Rounds: ${activeRounds}` : '';
+    return {
+      status: 'VERIFIED',
+      title: this.appConfig.messages.verificationSuccessTitle,
+      description: `Your identity has been verified.\n\nFull Name: \`${studentRecord.fullName}\`\nNickname: \`${nickname}\`\nStudent ID: \`${studentRecord.studentId}\`\nAssigned Role: <@&${verifiedRoleId}>${roundLine}`,
+      student: studentRecord,
+      appliedNickname: nickname,
+      nicknameHierarchyWarning: hierarchyWarning ?? undefined,
+    };
   }
 
   /**
@@ -258,7 +323,11 @@ export class VerificationController {
       student.studentId,
       this.appConfig.bot,
     );
-    const desiredRoleIds = this.computeDesiredRoleIds(member, student);
+    const desiredRoleIds = MemberMutationHelper.buildDesiredRoleIds(
+      member,
+      student,
+      this.appConfig.permissions,
+    );
 
     const currentRoleIds = new Set(member.roles.cache.keys());
     const missingRoles = desiredRoleIds.filter((roleId) => !currentRoleIds.has(roleId));
@@ -279,10 +348,11 @@ export class VerificationController {
       };
     }
 
-    const hierarchyWarning = await this.applyMemberNicknameAndRoles(
+    const hierarchyWarning = await MemberMutationHelper.applyMemberNicknameAndRoles(
       member,
       expectedNickname,
       desiredRoleIds,
+      'VerificationController',
     );
 
     Logger.info('VerificationController', 'Restored returning student roles and nickname', {
@@ -300,102 +370,6 @@ export class VerificationController {
       appliedNickname: expectedNickname,
       nicknameHierarchyWarning: hierarchyWarning ?? undefined,
     };
-  }
-
-  /**
-   * Computes the target Discord role ID array while preserving non-managed member roles.
-   *
-   * @param member the target Discord guild member
-   * @param student the student domain record governing managed roles
-   * @returns deduplicated Discord role snowflake IDs to assign on the member
-   */
-  private computeDesiredRoleIds(member: GuildMember, student: Student): string[] {
-    const managedIds = this.getManagedRoleIdsSet();
-    const preservedRoleIds = member.roles.cache
-      .filter((role) => role.id !== member.guild.id && !managedIds.has(role.id))
-      .map((role) => role.id);
-
-    const targetIds = new Set<string>(preservedRoleIds);
-    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
-
-    if (student.isVerified && member.guild.roles.cache.has(verifiedRoleId)) {
-      targetIds.add(verifiedRoleId);
-    }
-    if (student.isRound1 && member.guild.roles.cache.has(roundRoleIds.round1)) {
-      targetIds.add(roundRoleIds.round1);
-    }
-    if (student.isRound2 && member.guild.roles.cache.has(roundRoleIds.round2)) {
-      targetIds.add(roundRoleIds.round2);
-    }
-    if (student.isRound3 && member.guild.roles.cache.has(roundRoleIds.round3)) {
-      targetIds.add(roundRoleIds.round3);
-    }
-
-    return Array.from(targetIds);
-  }
-
-  /**
-   * Collects all configured verified and round role Snowflake IDs managed by verification workflows.
-   *
-   * @returns a Set of configured managed role IDs
-   */
-  private getManagedRoleIdsSet(): Set<string> {
-    const { verifiedRoleId, roundRoleIds } = this.appConfig.permissions;
-    return new Set<string>([
-      verifiedRoleId,
-      roundRoleIds.round1,
-      roundRoleIds.round2,
-      roundRoleIds.round3,
-    ]);
-  }
-
-  /**
-   * Mutates member nickname and roles in a single API call with graceful hierarchy fallback.
-   *
-   * @param member the target Discord guild member
-   * @param nickname the desired server nickname
-   * @param roleIds the complete target role ID array
-   * @returns a warning string if Discord blocked nickname or role updates due to hierarchy, otherwise null
-   */
-  private async applyMemberNicknameAndRoles(
-    member: GuildMember,
-    nickname: string,
-    roleIds: string[],
-  ): Promise<string | null> {
-    if (member.id === member.guild.ownerId) {
-      try {
-        await member.edit({ roles: roleIds });
-        return 'Discord prevents changing the Server Owner nickname. Roles were assigned; please update your nickname manually.';
-      } catch (error) {
-        Logger.warn(
-          'VerificationController',
-          `Role update skipped for guild owner: ${String(error)}`,
-        );
-        return 'Discord prevents bots from modifying the Server Owner profile. Please assign roles or nickname manually.';
-      }
-    }
-
-    try {
-      await member.edit({ nick: nickname, roles: roleIds });
-      return null;
-    } catch (error) {
-      if (
-        error instanceof DiscordAPIError &&
-        error.code === VerificationController.DISCORD_MISSING_PERMISSIONS_CODE
-      ) {
-        try {
-          await member.edit({ roles: roleIds });
-          return `Discord prevented updating your nickname due to role hierarchy. Please set your nickname manually to \`${nickname}\`.`;
-        } catch (fallbackError) {
-          Logger.warn(
-            'VerificationController',
-            `Fallback role edit failed with missing permissions: ${String(fallbackError)}`,
-          );
-          return 'Discord prevents updating your profile due to role hierarchy. Please verify that the bot role is positioned above your roles.';
-        }
-      }
-      throw error;
-    }
   }
 
   /**

@@ -186,6 +186,24 @@ export class StudentRepository {
   }
 
   /**
+   * Lists all verified students currently holding at least one of the specified round flags.
+   *
+   * @param rounds the round keys to match
+   * @returns an array of matching Student entities
+   */
+  public listByAnyRound(rounds: RoundKey[]): Student[] {
+    if (rounds.length === 0) {
+      return [];
+    }
+    const predicates = rounds.map((round) => `${this.resolveRoundColumn(round)} = 1`).join(' OR ');
+    const connection = this.databaseClient.getConnection();
+    const rows = connection
+      .prepare(`SELECT * FROM students WHERE is_verified = 1 AND (${predicates})`)
+      .all() as unknown as StudentRow[];
+    return rows.map((row) => this.mapRowToStudent(row));
+  }
+
+  /**
    * Lists all verified students stored in SQLite for reconciliation with Discord.
    *
    * @returns an array of all verified Student entities
@@ -199,15 +217,14 @@ export class StudentRepository {
   }
 
   /**
-   * Updates the round flags for an existing student.
+   * Updates the round flags for an existing student without altering verification status.
    *
    * @param discordId the target student's Discord user identifier
-   * @param state the synchronized role state flags
+   * @param state the synchronized round state flags
    */
   public syncRoleStateByDiscordId(
     discordId: string,
     state: {
-      isVerified?: boolean;
       isRound1: boolean;
       isRound2: boolean;
       isRound3: boolean;
@@ -218,20 +235,13 @@ export class StudentRepository {
       .prepare(
         `
         UPDATE students
-        SET is_verified = COALESCE(?, is_verified),
-            is_round_1 = ?,
+        SET is_round_1 = ?,
             is_round_2 = ?,
             is_round_3 = ?
         WHERE discord_id = ?
       `,
       )
-      .run(
-        state.isVerified === undefined ? null : state.isVerified ? 1 : 0,
-        state.isRound1 ? 1 : 0,
-        state.isRound2 ? 1 : 0,
-        state.isRound3 ? 1 : 0,
-        discordId,
-      );
+      .run(state.isRound1 ? 1 : 0, state.isRound2 ? 1 : 0, state.isRound3 ? 1 : 0, discordId);
   }
 
   /**
@@ -272,24 +282,23 @@ export class StudentRepository {
   }
 
   /**
-   * Sets a single round flag across multiple students inside an atomic transaction.
+   * Clears one or more round flags across multiple students inside an atomic transaction.
    *
    * @param studentIds the list of student identifiers to update
-   * @param round the round column to modify
-   * @param value true to enable the round flag, false to clear it
+   * @param rounds the round columns to clear
    */
-  public setRoundFlagForMany(studentIds: string[], round: RoundKey, value: boolean): void {
-    if (studentIds.length === 0) {
+  public clearRoundFlagsForMany(studentIds: string[], rounds: RoundKey[]): void {
+    if (studentIds.length === 0 || rounds.length === 0) {
       return;
     }
 
-    const column = this.resolveRoundColumn(round);
+    const assignments = rounds.map((round) => `${this.resolveRoundColumn(round)} = 0`).join(', ');
     const connection = this.databaseClient.getConnection();
-    const statement = connection.prepare(`UPDATE students SET ${column} = ? WHERE student_id = ?`);
+    const statement = connection.prepare(`UPDATE students SET ${assignments} WHERE student_id = ?`);
 
     this.databaseClient.runInTransaction(() => {
       for (const studentId of studentIds) {
-        statement.run(value ? 1 : 0, studentId);
+        statement.run(studentId);
       }
     });
   }
