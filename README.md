@@ -70,7 +70,7 @@ Use this deployment path on free Discord bot hosting panels or low-memory VPS in
 3. Install production dependencies only and start the prebuilt bundle:
 
 ```bash
-npm ci --omit=dev
+npm ci --omit=dev --ignore-scripts
 npm run start
 ```
 
@@ -107,20 +107,20 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 
 ## 4. Slash Commands Overview
 
-| Command                 | Access Tier         | Behavior                                                                                                                              |
-| ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `/verify`               | Everyone            | Verifies new candidates (`verifiedRoleId` + optional `defaultRound`) or restores returning accounts publicly in the channel           |
-| `Verify Account` button | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                     |
-| `/student lookup`       | Owner and Moderator | Displays stored student full name, computed nickname, and round flags by `@user` or Student ID publicly in the channel                |
-| `/student register`     | Owner and Moderator | Manually registers a student (`user` required; opens a Modal when `full-name` and `student-id` are omitted) publicly in the channel   |
-| `/student update`       | Owner and Moderator | Updates independent `round-1` through `round-3` flags and optional name or Student ID by `@user` or Student ID                        |
-| `/student reset`        | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles by `@user` or Student ID publicly in the channel                    |
-| `/round promote`        | Owner               | Transitions students between any two stages (`verified`, `round-1..3`) with confirmation prompt and optional `exclude`/`only` filters |
-| `/round revoke`         | Owner               | Bulk removes one or more selected round roles with confirmation prompt and optional `exclude`/`only` filters publicly in the channel  |
-| `/system verify`        | Owner               | Enables or disables verification and optionally posts or updates the verification button panel in a selected text channel             |
-| `/system sync`          | Owner               | Reconciles SQLite student records (nicknames and roles) to Discord publicly in the channel                                            |
-| `/system staff`         | Owner               | Promotes verified members to `moderator` or `supporter` (`MOD` or `SUP` prefix) or resets staff (`none`)                              |
-| `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and the `backup` timer with zero downtime                                          |
+| Command                 | Access Tier         | Behavior                                                                                                                             |
+| ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `/verify`               | Everyone            | Verifies new candidates (`verifiedRoleId` + optional `defaultRound`) or restores returning accounts publicly in the channel          |
+| `Verify Account` button | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                    |
+| `/student lookup`       | Owner and Moderator | Displays stored candidate full name, computed nickname, and round flags by `@user` or Student ID publicly in the channel             |
+| `/student register`     | Owner and Moderator | Manually registers a candidate student (`user` required; opens a Modal when `full-name` and `student-id` are omitted)                |
+| `/student update`       | Owner and Moderator | Updates independent `round-1` through `round-3` flags and optional name or Student ID for candidates by `@user` or Student ID        |
+| `/student reset`        | Owner and Moderator | Deletes a candidate student record from SQLite and strips recruitment roles by `@user` or Student ID                                 |
+| `/round promote`        | Owner               | Transitions candidates between stages (`verified`, `round-1..3`), preserving higher round flags when promoting upward                |
+| `/round revoke`         | Owner               | Bulk removes one or more selected round roles with confirmation prompt and optional `exclude`/`only` filters publicly in the channel |
+| `/system verify`        | Owner               | Enables or disables verification and optionally posts a new verification button panel in a selected text channel                     |
+| `/system sync`          | Owner               | Reconciles SQLite student and staff records (nicknames and roles) to Discord publicly in the channel                                 |
+| `/system staff`         | Owner               | Promotes verified members to `moderator` or `supporter` (`MOD` or `SUP` prefix) or clears all roles and DB record (`reset`)          |
+| `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and the `backup` timer with zero downtime                                         |
 
 ---
 

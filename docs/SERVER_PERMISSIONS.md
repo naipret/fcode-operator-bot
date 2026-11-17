@@ -58,17 +58,17 @@ Every channel uses Unicode 6.0 emojis paired with `kebab-case` English names so 
 
 All slash commands (`/verify`, `/student`, `/round`, `/system`) reply publicly in the invoking channel so staff and candidates can observe command outcomes directly. Only the persistent `Verify Account` button in `#✅・verification` uses ephemeral responses to keep the verification channel clean.
 
-| Command                 | Subcommand | Authorized Caller                              | Purpose                                                                                                  |
-| ----------------------- | ---------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `/verify`               | Default    | Every guild member                             | Verifies new candidates in one step or restores returning verified members with public channel replies   |
-| `Verify Account` button | Component  | Every guild member                             | Triggers the same one-step verification or restoration flow with ephemeral replies                       |
-| `/student`              | `lookup`   | Server Owner, `ownerRoleId`, `moderatorRoleId` | Inspects stored student identity, full name, and round flags by `@user` or Student ID                    |
-| `/student`              | `register` | Server Owner, `ownerRoleId`, `moderatorRoleId` | Manually registers a student (opens a Modal when `full-name` and `student-id` are omitted)               |
-| `/student`              | `update`   | Server Owner, `ownerRoleId`, `moderatorRoleId` | Updates independent `round-1` through `round-3` flags and optional full name or Student ID               |
-| `/student`              | `reset`    | Server Owner, `ownerRoleId`, `moderatorRoleId` | Deletes a student record and strips recruitment roles by `@user` or Student ID                           |
-| `/round`                | `promote`  | Server Owner and `ownerRoleId` only            | Transitions candidates between any two stages (`verified`, `round-1..3`) after confirmation prompt       |
-| `/round`                | `revoke`   | Server Owner and `ownerRoleId` only            | Bulk removes one or more selected round roles with `exclude` or `only` filters after confirmation        |
-| `/system`               | `verify`   | Server Owner and `ownerRoleId` only            | Toggles the verification gate (`enabled`) and optionally posts or updates the verification button panel  |
-| `/system`               | `sync`     | Server Owner and `ownerRoleId` only            | Synchronizes SQLite student records (nicknames and roles) to Discord                                     |
-| `/system`               | `staff`    | Server Owner and `ownerRoleId` only            | Promotes verified members to `moderator` or `supporter` (`MOD` or `SUP` prefix) or resets staff (`none`) |
-| `/system`               | `reload`   | Server Owner and `ownerRoleId` only            | Validates and hot-reloads `config.yaml`, `Logger`, and background timers with zero downtime              |
+| Command                 | Subcommand | Authorized Caller                              | Purpose                                                                                                                     |
+| ----------------------- | ---------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `/verify`               | Default    | Every guild member                             | Verifies new candidates in one step or restores returning verified members with public channel replies                      |
+| `Verify Account` button | Component  | Every guild member                             | Triggers the same one-step verification or restoration flow with ephemeral replies                                          |
+| `/student`              | `lookup`   | Server Owner, `ownerRoleId`, `moderatorRoleId` | Inspects stored candidate identity, full name, and round flags by `@user` or Student ID (rejects staff and owners)          |
+| `/student`              | `register` | Server Owner, `ownerRoleId`, `moderatorRoleId` | Manually registers a candidate student (opens a Modal when `full-name` and `student-id` are omitted; rejects staff)         |
+| `/student`              | `update`   | Server Owner, `ownerRoleId`, `moderatorRoleId` | Updates independent `round-1` through `round-3` flags and optional identity fields for candidates (rejects staff)           |
+| `/student`              | `reset`    | Server Owner, `ownerRoleId`, `moderatorRoleId` | Deletes a candidate record and strips recruitment roles by `@user` or Student ID (rejects staff)                            |
+| `/round`                | `promote`  | Server Owner and `ownerRoleId` only            | Transitions candidates between stages (`verified`, `round-1..3`), preserving higher rounds when promoting upward            |
+| `/round`                | `revoke`   | Server Owner and `ownerRoleId` only            | Bulk removes one or more selected round roles with `exclude` or `only` filters after confirmation                           |
+| `/system`               | `verify`   | Server Owner and `ownerRoleId` only            | Toggles the verification gate (`enabled`) and optionally posts a new verification button panel                              |
+| `/system`               | `sync`     | Server Owner and `ownerRoleId` only            | Synchronizes SQLite candidate and staff records (nicknames and roles) to Discord                                            |
+| `/system`               | `staff`    | Server Owner and `ownerRoleId` only            | Promotes verified members to `moderator` or `supporter` (`MOD` or `SUP` prefix) or clears all roles and DB record (`reset`) |
+| `/system`               | `reload`   | Server Owner and `ownerRoleId` only            | Validates and hot-reloads `config.yaml`, `Logger`, and background timers with zero downtime                                 |

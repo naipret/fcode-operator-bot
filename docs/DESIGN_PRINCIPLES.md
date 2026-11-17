@@ -18,7 +18,7 @@ Each class and module owns one cohesive responsibility:
 
 ### Open and Closed Principle
 
-Recruitment parameters, cohort ranges (`allowedCohorts`), cohort and staff prefixes (`clubCohortPrefix`, `moderatorPrefix`, `supporterPrefix`), `defaultRound`, and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `supporterRoleId`, `verifiedRoleId`, `roundRoleIds`) reside in `config.yaml`. Transitioning to a new cohort prefix or deploying on a new server template requires editing `config.yaml` and running `/system reload` rather than modifying controller source code.
+Recruitment parameters, cohort ranges (`allowedCohorts`), staff prefixes (`moderatorPrefix`, `supporterPrefix`), `defaultRound`, and permission role IDs (`ownerRoleId`, `moderatorRoleId`, `supporterRoleId`, `verifiedRoleId`, `roundRoleIds`) reside in `config.yaml` and can be updated at runtime via `/system reload`. Changing `clubCohortPrefix` alters the SQLite file path (`recruitment-<prefix>.db`) and requires a process restart.
 
 ### Interface Segregation Principle
 
