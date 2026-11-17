@@ -1,4 +1,6 @@
 bot:
+  # Prefix used for standardized nicknames (e.g., F22_NguyenVanA_SE220001)
+  # and dynamic SQLite database naming (e.g., ./data/recruitment-f22.db)
   clubCohortPrefix: 'F22'
   maxNicknameLength: 32
   allowedCohorts:
@@ -21,11 +23,17 @@ bot:
 
 verification:
   enabledByDefault: true
-  supportChannelId: ''
+  # Round automatically granted upon verification alongside verifiedRoleId.
+  # Options: 'none' | 'round-1' | 'round-2' | 'round-3'
+  defaultRound: 'none'
 
 permissions:
+  # Grants full administrative access (/round, /system, and /student) equivalent to the Discord Server Owner
   ownerRoleId: ''
+  # Grants student support access (/student commands only; cannot run /round or /system)
   moderatorRoleId: ''
+  # Base role assigned to every candidate immediately upon successful verification
+  verifiedRoleId: ''
   roundRoleIds:
     round1: ''
     round2: ''
@@ -33,12 +41,37 @@ permissions:
 
 database:
   directory: './data'
+  # Periodically reconciles manual SQLite database edits back to Discord members
+  sync:
+    enabled: true
+    intervalMinutes: 5
+  # Native SQLite online backup (VACUUM INTO) with automatic old-file pruning
+  backup:
+    enabled: true
+    directory: './data/backups'
+    # 1440 minutes = 24 hours
+    intervalMinutes: 1440
+    maxFiles: 7
 
 logging:
-  level: 'info'
-  console: true
-  file: true
-  directory: './logs'
+  # 1. Local daily JSON log files (YYYY-MM-DD.log)
+  file:
+    enabled: true
+    # Options: 'debug' | 'info' | 'warn' | 'error'
+    level: 'debug'
+    directory: './logs'
+    maxFiles: 14
+  # 2. Pretty-printed terminal output
+  console:
+    enabled: true
+    # Options: 'debug' | 'info' | 'warn' | 'error'
+    level: 'info'
+  # 3. Batched operational log forwarding to a Discord text channel
+  discord:
+    enabled: true
+    # Options: 'debug' | 'info' | 'warn' | 'error'
+    level: 'info'
+    channelId: ''
 
 messages:
   verificationPanelTitle: 'Verify'
