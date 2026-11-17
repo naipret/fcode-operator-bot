@@ -1,0 +1,58 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify code formatting
+        run: npm run format:check
+
+      - name: Run linter and type checker
+        run: npm run lint
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Package release archives
+        run: |
+          mkdir -p release-staging release-assets
+          cp -r dist release-staging/dist
+          cp package.json package-lock.json config.example.yaml .env.example README.md LICENSE release-staging/
+          (cd release-staging && zip -r ../release-assets/fcode-operator-bot.zip .)
+          tar -czf release-assets/fcode-operator-bot.tar.gz -C release-staging .
+
+      - name: Publish Latest Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes || true
+          git push origin :refs/tags/latest || true
+          gh release create latest \
+            release-assets/fcode-operator-bot.zip \
+            release-assets/fcode-operator-bot.tar.gz \
+            --target "${{ github.sha }}" \
+            --title "Latest Release" \
+            --notes "Automated continuous release generated from commit ${{ github.sha }} on branch ${{ github.ref_name }}." \
+            --latest
