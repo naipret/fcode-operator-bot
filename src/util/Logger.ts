@@ -100,6 +100,7 @@ class DailyLogDestination extends Writable {
 
     fs.mkdirSync(this.directory, { recursive: true });
     const filePath = path.join(this.directory, `${today}.log`);
+    fs.closeSync(fs.openSync(filePath, 'a'));
     this.fileStream = fs.createWriteStream(filePath, { flags: 'a', encoding: 'utf8' });
     this.currentDate = today;
     this.pruneOldLogFiles();
