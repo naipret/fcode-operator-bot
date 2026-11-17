@@ -8,7 +8,7 @@ Configuration-driven Discord recruitment bot for F-Code Club at FPT University. 
 
 | Component       | Specification                                                                                          |
 | --------------- | ------------------------------------------------------------------------------------------------------ |
-| Runtime         | Node.js LTS (`>= 22.15.0`)                                                                             |
+| Runtime         | Node.js (`>= 24.0.0`)                                                                                  |
 | Language        | TypeScript (`strict: true`, `noUncheckedIndexedAccess: true`)                                          |
 | Discord SDK     | `discord.js` v14 with Gateway `Guilds` and `GuildMembers` intents                                      |
 | Persistence     | Built-in `node:sqlite` (`DatabaseSync` in `WAL` mode, stored at `data/recruitment-<prefix>.db`)        |
@@ -108,9 +108,10 @@ docker run -d --restart unless-stopped --env-file .env -v $(pwd)/config.yaml:/ap
 | `Verify Account` button | Everyone            | Opens the same one-step verification or restoration flow with ephemeral responses                                                     |
 | `/student lookup`       | Owner and Moderator | Displays stored student full name, computed nickname, and round flags by `@user` or Student ID publicly in the channel                |
 | `/student register`     | Owner and Moderator | Manually registers a student (`user` required; opens a Modal when `full-name` and `student-id` are omitted) publicly in the channel   |
+| `/student update`       | Owner and Moderator | Updates independent `round-1` through `round-3` flags and optional name or Student ID by `@user` or Student ID                        |
 | `/student reset`        | Owner and Moderator | Deletes a student record from SQLite and strips recruitment roles by `@user` or Student ID publicly in the channel                    |
 | `/round promote`        | Owner               | Transitions students between any two stages (`verified`, `round-1..3`) with confirmation prompt and optional `exclude`/`only` filters |
-| `/round revoke`         | Owner               | Bulk removes a round role with confirmation prompt and optional `exclude`/`only` filters publicly in the channel                      |
+| `/round revoke`         | Owner               | Bulk removes one or more selected round roles with confirmation prompt and optional `exclude`/`only` filters publicly in the channel  |
 | `/system verify`        | Owner               | Enables or disables verification and optionally posts or updates the verification button panel in a selected text channel             |
 | `/system sync`          | Owner               | Reconciles SQLite student records (nicknames and roles) to Discord publicly in the channel                                            |
 | `/system reload`        | Owner               | Validates and hot-reloads `config.yaml`, `Logger`, and `sync`/`backup` timers with zero downtime                                      |

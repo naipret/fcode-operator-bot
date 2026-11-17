@@ -22,7 +22,7 @@ Recruitment parameters, cohort ranges (`allowedCohorts`), cohort prefixes (`club
 
 ### Interface Segregation Principle
 
-Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController`, `StudentRepository`, and `GuildResourceResolver`, `RoundCommandView` depends on `RoundController` and `GuildResourceResolver`, and `SystemCommandView` depends on `StudentRepository`, `StudentController`, and `GuildResourceResolver`.
+Controller constructors receive only the narrow collaborators they require. `VerifyCommandView` depends on `VerificationController` and `StudentRepository`, `RoundCommandView` depends on `RoundController` and `GuildResourceResolver`, and `SystemCommandView` depends on `StudentRepository`, `StudentController`, and `GuildResourceResolver`.
 
 ### Dependency Inversion Principle
 
@@ -40,7 +40,7 @@ Production bot runtime under `src/` is strictly decoupled from local server prov
 
 Shared operations are centralized in utility helpers:
 
-1. Discord authorization checks (`isOwnerOrHasOwnerRole`, `isModeratorOrOwner`) and Snowflake ID resolution (`getStageRole`, `getSupportChannelMention`) reside in `GuildResourceResolver`.
+1. Discord authorization checks (`isOwnerOrHasOwnerRole`, `isModeratorOrOwner`) and Snowflake ID resolution (`getRoundRole`, `getRoundRoleId`, `getVerifiedRoleId`) reside in `GuildResourceResolver`.
 2. Target parsing for mixed `@mention` and student identifier strings resides in `InputValidator.parseTargetTokens`.
 3. Success, warning, and error embeds use `EmbedFactory` to guarantee uniform visual output across all commands.
 

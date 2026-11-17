@@ -48,7 +48,7 @@ Two mechanisms prevent overload during recruitment registration peaks:
 
 ## 3. SQLite Database Schema
 
-Storage relies on Node's built-in `node:sqlite` (`DatabaseSync`) configured in `WAL` journal mode with a 5000-millisecond busy timeout. The directory configured in `database.directory` (`./data` by default) is created dynamically at startup when `DatabaseClient` initializes `recruitment-<prefix>.db` (derived from `bot.clubCohortPrefix` in lowercase, such as `data/recruitment-f22.db`). Periodic SQLite-to-Discord reconciliation (`database.sync`) and native online backups via `VACUUM INTO` (`database.backup` in `./data/backups` with `maxFiles` pruning) run automatically on configured intervals.
+Storage relies on Node's built-in `node:sqlite` (`DatabaseSync`) configured in `WAL` journal mode with a 5000-millisecond busy timeout. The directory configured in `database.directory` (`./data` by default) is created dynamically at startup when `DatabaseClient` initializes `recruitment-<prefix>.db` (derived from `bot.clubCohortPrefix` in lowercase, such as `data/recruitment-f22.db`). Native online backups via `VACUUM INTO` (`database.backup` in `./data/backups` with `maxFiles` pruning) run automatically on configured intervals, while SQLite-to-Discord reconciliation runs at startup and via `/system sync`.
 
 Operational logging uses a 3-tier `pino` pipeline configured via `logging` in `config.yaml`: daily JSON files (`logs/YYYY-MM-DD.log` with `maxFiles` pruning) under `logging.file`, pretty-printed stdout (`pino-pretty`) under `logging.console`, and batched Discord channel forwarding under `logging.discord`, each with its own `enabled` and `level` threshold.
 
