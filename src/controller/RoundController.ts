@@ -135,23 +135,6 @@ export class RoundController {
   }
 
   /**
-   * Revokes a single round role from a resolved list of candidates on Discord and SQLite.
-   *
-   * @param guild the target Discord guild
-   * @param candidates the resolved list of students to revoke from
-   * @param round the round role to remove
-   * @returns a summary BatchRoleMutationResult
-   * @throws Error if the round role ID does not exist in the guild
-   */
-  public async revokeRoundFromCandidates(
-    guild: Guild,
-    candidates: Student[],
-    round: RoundKey,
-  ): Promise<BatchRoleMutationResult> {
-    return await this.revokeRoundsFromCandidates(guild, candidates, [round]);
-  }
-
-  /**
    * Revokes one or more round roles from a resolved list of candidates on Discord and SQLite.
    *
    * @param guild the target Discord guild

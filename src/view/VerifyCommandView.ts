@@ -1,21 +1,17 @@
 import {
-  ActionRowBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type GuildMember,
   MessageFlags,
-  ModalBuilder,
   type ModalSubmitInteraction,
   SlashCommandBuilder,
-  TextInputBuilder,
-  TextInputStyle,
 } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
 import type { VerificationController } from '../controller/VerificationController.js';
 import type { VerificationOutcome } from '../model/Student.js';
 import type { StudentRepository } from '../repository/StudentRepository.js';
-import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { EmbedFactory } from './EmbedFactory.js';
+import { buildStudentInputModal, resolveInteractionMember } from './StudentModalBuilder.js';
 
 /**
  * Custom identifier shared between the persistent panel button and runtime handler.
@@ -39,7 +35,6 @@ export class VerifyCommandView {
   private appConfig: AppConfig;
   private readonly studentRepository: StudentRepository;
   private readonly verificationController: VerificationController;
-  private readonly resourceResolver: GuildResourceResolver;
 
   /**
    * Creates a VerifyCommandView bound to controller, repository, and config.
@@ -47,18 +42,15 @@ export class VerifyCommandView {
    * @param appConfig the validated application configuration
    * @param studentRepository the SQLite student repository
    * @param verificationController the verification business controller
-   * @param resourceResolver the guild resource resolver
    */
   public constructor(
     appConfig: AppConfig,
     studentRepository: StudentRepository,
     verificationController: VerificationController,
-    resourceResolver: GuildResourceResolver,
   ) {
     this.appConfig = appConfig;
     this.studentRepository = studentRepository;
     this.verificationController = verificationController;
-    this.resourceResolver = resourceResolver;
   }
 
   /**
@@ -116,9 +108,12 @@ export class VerifyCommandView {
     const rawStudentId = interaction.options.getString('student-id');
     const providedCount = [rawFullName, rawStudentId].filter((value) => value !== null).length;
 
-    const member = await interaction.guild.members.fetch(interaction.user.id);
-
     if (providedCount === 0) {
+      const member = await resolveInteractionMember(
+        interaction.guild,
+        interaction.member,
+        interaction.user.id,
+      );
       await this.startInteractiveVerification(interaction, member, false);
       return;
     }
@@ -136,6 +131,11 @@ export class VerifyCommandView {
     }
 
     await interaction.deferReply();
+    const member = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
     const outcome = await this.verificationController.registerNewStudent(
       member,
       rawFullName,
@@ -153,7 +153,11 @@ export class VerifyCommandView {
     if (!interaction.guild) {
       return;
     }
-    const member = await interaction.guild.members.fetch(interaction.user.id);
+    const member = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
     await this.startInteractiveVerification(interaction, member, true);
   }
 
@@ -189,7 +193,11 @@ export class VerifyCommandView {
 
     const rawFullName = interaction.fields.getTextInputValue('full-name-input');
     const rawStudentId = interaction.fields.getTextInputValue('student-id-input');
-    const member = await interaction.guild.members.fetch(interaction.user.id);
+    const member = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
 
     const outcome = await this.verificationController.registerNewStudent(
       member,
@@ -236,43 +244,11 @@ export class VerifyCommandView {
       return;
     }
 
-    const modalId = isEphemeral ? VERIFY_BUTTON_MODAL_ID : VERIFY_SLASH_MODAL_ID;
-    await interaction.showModal(this.buildVerificationModal(modalId));
-  }
-
-  /**
-   * Constructs the Discord Modal requesting full name and student identifier.
-   *
-   * @param customId the modal identifier indicating public slash or ephemeral button origin
-   * @returns a ModalBuilder instance
-   */
-  private buildVerificationModal(customId: string): ModalBuilder {
     const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
-    const fullNameInput = new TextInputBuilder()
-      .setCustomId('full-name-input')
-      .setLabel('Full Name')
-      .setPlaceholder('Example: Nguyễn Văn A')
-      .setStyle(TextInputStyle.Short)
-      .setMinLength(2)
-      .setMaxLength(60)
-      .setRequired(true);
-
-    const studentIdInput = new TextInputBuilder()
-      .setCustomId('student-id-input')
-      .setLabel('Student ID (8 characters)')
-      .setPlaceholder(`Example: SE${latestCohort}0001`)
-      .setStyle(TextInputStyle.Short)
-      .setMinLength(8)
-      .setMaxLength(8)
-      .setRequired(true);
-
-    return new ModalBuilder()
-      .setCustomId(customId)
-      .setTitle('Student Verification')
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(fullNameInput),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(studentIdInput),
-      );
+    const modalId = isEphemeral ? VERIFY_BUTTON_MODAL_ID : VERIFY_SLASH_MODAL_ID;
+    await interaction.showModal(
+      buildStudentInputModal(modalId, 'Student Verification', latestCohort),
+    );
   }
 
   /**

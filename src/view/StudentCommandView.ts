@@ -1,18 +1,14 @@
 import {
-  ActionRowBuilder,
   type ChatInputCommandInteraction,
-  ModalBuilder,
   type ModalSubmitInteraction,
-  PermissionFlagsBits,
   SlashCommandBuilder,
-  TextInputBuilder,
-  TextInputStyle,
 } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
 import type { StudentController } from '../controller/StudentController.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { Logger } from '../util/Logger.js';
 import { EmbedFactory } from './EmbedFactory.js';
+import { buildStudentInputModal, resolveInteractionMember } from './StudentModalBuilder.js';
 
 /**
  * Custom identifier prefix for the modal opened by /student register when fields are omitted.
@@ -64,7 +60,7 @@ export class StudentCommandView {
   }
 
   /**
-   * Builds the /student slash command and its lookup, register, and reset subcommands.
+   * Builds the /student slash command and its lookup, register, update, and reset subcommands.
    *
    * @returns a SlashCommandBuilder defining /student
    */
@@ -72,7 +68,6 @@ export class StudentCommandView {
     return new SlashCommandBuilder()
       .setName('student')
       .setDescription('Manage verified student records (moderator and owner only).')
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
       .addSubcommand((subcommand) =>
         subcommand
           .setName('lookup')
@@ -101,6 +96,38 @@ export class StudentCommandView {
             option
               .setName('student-id')
               .setDescription('Student ID (for example, SE220001).')
+              .setRequired(false),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName('update')
+          .setDescription('Update independent round flags and optional identity fields.')
+          .addStringOption((option) =>
+            option
+              .setName('target')
+              .setDescription('@mention, Discord ID, or Student ID to update.')
+              .setRequired(true),
+          )
+          .addBooleanOption((option) =>
+            option.setName('round-1').setDescription('Assign Round 1 role/flag.').setRequired(true),
+          )
+          .addBooleanOption((option) =>
+            option.setName('round-2').setDescription('Assign Round 2 role/flag.').setRequired(true),
+          )
+          .addBooleanOption((option) =>
+            option.setName('round-3').setDescription('Assign Round 3 role/flag.').setRequired(true),
+          )
+          .addStringOption((option) =>
+            option
+              .setName('full-name')
+              .setDescription('Optional updated full name.')
+              .setRequired(false),
+          )
+          .addStringOption((option) =>
+            option
+              .setName('student-id')
+              .setDescription('Optional updated Student ID.')
               .setRequired(false),
           ),
       )
@@ -135,9 +162,20 @@ export class StudentCommandView {
       return;
     }
 
-    const callerMember = await interaction.guild.members.fetch(interaction.user.id);
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === 'register') {
+      await this.handleRegisterSubcommand(interaction);
+      return;
+    }
+
+    await interaction.deferReply();
+    const callerMember = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
     if (!this.resourceResolver.isModeratorOrOwner(interaction.guild, callerMember)) {
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Permission Denied',
@@ -148,98 +186,16 @@ export class StudentCommandView {
       return;
     }
 
-    const subcommand = interaction.options.getSubcommand();
-
-    if (subcommand === 'register') {
-      const targetUser = interaction.options.getUser('user', true);
-      const rawFullName = interaction.options.getString('full-name');
-      const rawStudentId = interaction.options.getString('student-id');
-      const providedCount = [rawFullName, rawStudentId].filter((value) => value !== null).length;
-
-      if (providedCount === 0) {
-        await interaction.showModal(this.buildRegisterModal(targetUser.id));
-        return;
-      }
-
-      if (providedCount < 2 || !rawFullName || !rawStudentId) {
-        await interaction.reply({
-          embeds: [
-            EmbedFactory.buildErrorEmbed(
-              'Incomplete Parameters',
-              'Provide both `full-name` and `student-id` together, or omit both to open the registration form.',
-            ),
-          ],
-        });
-        return;
-      }
-
-      await interaction.deferReply();
-      const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-      if (!targetMember) {
-        await interaction.editReply({
-          embeds: [
-            EmbedFactory.buildErrorEmbed(
-              'Invalid Target',
-              'The target Discord member could not be found in this server.',
-            ),
-          ],
-        });
-        return;
-      }
-
-      const outcome = await this.studentController.registerStudentManually(
-        targetMember,
-        rawFullName,
-        rawStudentId,
-      );
-      if (outcome.success) {
-        Logger.info('StudentCommandView', 'Manually registered student', {
-          callerId: interaction.user.id,
-          targetId: targetMember.id,
-          studentId: rawStudentId.toUpperCase(),
-        });
-      }
-      await interaction.editReply({
-        embeds: [
-          outcome.success
-            ? EmbedFactory.buildSuccessEmbed(outcome.title, outcome.description)
-            : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
-        ],
-      });
-      return;
-    }
-
-    await interaction.deferReply();
-
     if (subcommand === 'lookup') {
-      const target = interaction.options.getString('target', true);
-      const outcome = this.studentController.lookupStudent(target);
-      await interaction.editReply({
-        embeds: [
-          outcome.success
-            ? EmbedFactory.buildInfoEmbed(outcome.title, outcome.description)
-            : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
-        ],
-      });
+      await this.handleLookupSubcommand(interaction);
       return;
     }
-
+    if (subcommand === 'update') {
+      await this.handleUpdateSubcommand(interaction);
+      return;
+    }
     if (subcommand === 'reset') {
-      const target = interaction.options.getString('target', true);
-      const outcome = await this.studentController.resetStudent(interaction.guild, target);
-      if (outcome.success) {
-        Logger.info('StudentCommandView', 'Reset student record', {
-          callerId: interaction.user.id,
-          target,
-        });
-      }
-      await interaction.editReply({
-        embeds: [
-          outcome.success
-            ? EmbedFactory.buildSuccessEmbed(outcome.title, outcome.description)
-            : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
-        ],
-      });
+      await this.handleResetSubcommand(interaction);
     }
   }
 
@@ -253,9 +209,14 @@ export class StudentCommandView {
       return;
     }
 
-    const callerMember = await interaction.guild.members.fetch(interaction.user.id);
+    await interaction.deferReply();
+    const callerMember = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
     if (!this.resourceResolver.isModeratorOrOwner(interaction.guild, callerMember)) {
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Permission Denied',
@@ -265,8 +226,6 @@ export class StudentCommandView {
       });
       return;
     }
-
-    await interaction.deferReply();
 
     const targetUserId = interaction.customId.slice(STUDENT_REGISTER_MODAL_PREFIX.length);
     const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
@@ -284,7 +243,6 @@ export class StudentCommandView {
 
     const rawFullName = interaction.fields.getTextInputValue('full-name-input');
     const rawStudentId = interaction.fields.getTextInputValue('student-id-input');
-
     const outcome = await this.studentController.registerStudentManually(
       targetMember,
       rawFullName,
@@ -308,37 +266,180 @@ export class StudentCommandView {
   }
 
   /**
-   * Constructs the Discord Modal requesting full name and student identifier for /student register.
+   * Handles /student register via modal or inline parameters.
    *
-   * @param targetUserId the Discord user snowflake ID being registered
-   * @returns a ModalBuilder instance
+   * @param interaction the slash command interaction
    */
-  private buildRegisterModal(targetUserId: string): ModalBuilder {
-    const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
-    const fullNameInput = new TextInputBuilder()
-      .setCustomId('full-name-input')
-      .setLabel('Full Name')
-      .setPlaceholder('Example: Nguyễn Văn A')
-      .setStyle(TextInputStyle.Short)
-      .setMinLength(2)
-      .setMaxLength(60)
-      .setRequired(true);
+  private async handleRegisterSubcommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (!interaction.guild) {
+      return;
+    }
 
-    const studentIdInput = new TextInputBuilder()
-      .setCustomId('student-id-input')
-      .setLabel('Student ID (8 characters)')
-      .setPlaceholder(`Example: SE${latestCohort}0001`)
-      .setStyle(TextInputStyle.Short)
-      .setMinLength(8)
-      .setMaxLength(8)
-      .setRequired(true);
+    const callerMember = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
+    if (!this.resourceResolver.isModeratorOrOwner(interaction.guild, callerMember)) {
+      await interaction.reply({
+        embeds: [
+          EmbedFactory.buildErrorEmbed(
+            'Permission Denied',
+            'Only the Server Owner or moderators can execute `/student` commands.',
+          ),
+        ],
+      });
+      return;
+    }
 
-    return new ModalBuilder()
-      .setCustomId(`${STUDENT_REGISTER_MODAL_PREFIX}${targetUserId}`)
-      .setTitle('Manual Student Registration')
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(fullNameInput),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(studentIdInput),
+    const targetUser = interaction.options.getUser('user', true);
+    const rawFullName = interaction.options.getString('full-name');
+    const rawStudentId = interaction.options.getString('student-id');
+    const providedCount = [rawFullName, rawStudentId].filter((value) => value !== null).length;
+
+    if (providedCount === 0) {
+      const latestCohort = this.appConfig.bot.allowedCohorts.at(-1) ?? '22';
+      await interaction.showModal(
+        buildStudentInputModal(
+          `${STUDENT_REGISTER_MODAL_PREFIX}${targetUser.id}`,
+          'Manual Student Registration',
+          latestCohort,
+        ),
       );
+      return;
+    }
+
+    if (providedCount < 2 || !rawFullName || !rawStudentId) {
+      await interaction.reply({
+        embeds: [
+          EmbedFactory.buildErrorEmbed(
+            'Incomplete Parameters',
+            'Provide both `full-name` and `student-id` together, or omit both to open the registration form.',
+          ),
+        ],
+      });
+      return;
+    }
+
+    await interaction.deferReply();
+    const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    if (!targetMember) {
+      await interaction.editReply({
+        embeds: [
+          EmbedFactory.buildErrorEmbed(
+            'Invalid Target',
+            'The target Discord member could not be found in this server.',
+          ),
+        ],
+      });
+      return;
+    }
+
+    const outcome = await this.studentController.registerStudentManually(
+      targetMember,
+      rawFullName,
+      rawStudentId,
+    );
+    if (outcome.success) {
+      Logger.info('StudentCommandView', 'Manually registered student', {
+        callerId: interaction.user.id,
+        targetId: targetMember.id,
+        studentId: rawStudentId.toUpperCase(),
+      });
+    }
+    await interaction.editReply({
+      embeds: [
+        outcome.success
+          ? EmbedFactory.buildSuccessEmbed(outcome.title, outcome.description)
+          : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
+      ],
+    });
+  }
+
+  /**
+   * Handles /student lookup subcommand execution.
+   *
+   * @param interaction the deferred slash command interaction
+   */
+  private async handleLookupSubcommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    const target = interaction.options.getString('target', true);
+    const outcome = this.studentController.lookupStudent(target);
+    await interaction.editReply({
+      embeds: [
+        outcome.success
+          ? EmbedFactory.buildInfoEmbed(outcome.title, outcome.description)
+          : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
+      ],
+    });
+  }
+
+  /**
+   * Handles /student update subcommand execution with independent round flags.
+   *
+   * @param interaction the deferred slash command interaction
+   */
+  private async handleUpdateSubcommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (!interaction.guild) {
+      return;
+    }
+
+    const target = interaction.options.getString('target', true);
+    const isRound1 = interaction.options.getBoolean('round-1', true);
+    const isRound2 = interaction.options.getBoolean('round-2', true);
+    const isRound3 = interaction.options.getBoolean('round-3', true);
+    const fullName = interaction.options.getString('full-name');
+    const studentId = interaction.options.getString('student-id');
+
+    const outcome = await this.studentController.updateStudent(interaction.guild, target, {
+      fullName,
+      studentId,
+      isRound1,
+      isRound2,
+      isRound3,
+    });
+    if (outcome.success) {
+      Logger.info('StudentCommandView', 'Updated student record', {
+        callerId: interaction.user.id,
+        target,
+        isRound1,
+        isRound2,
+        isRound3,
+      });
+    }
+
+    await interaction.editReply({
+      embeds: [
+        outcome.success
+          ? EmbedFactory.buildSuccessEmbed(outcome.title, outcome.description)
+          : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
+      ],
+    });
+  }
+
+  /**
+   * Handles /student reset subcommand execution.
+   *
+   * @param interaction the deferred slash command interaction
+   */
+  private async handleResetSubcommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (!interaction.guild) {
+      return;
+    }
+
+    const target = interaction.options.getString('target', true);
+    const outcome = await this.studentController.resetStudent(interaction.guild, target);
+    if (outcome.success) {
+      Logger.info('StudentCommandView', 'Reset student record', {
+        callerId: interaction.user.id,
+        target,
+      });
+    }
+    await interaction.editReply({
+      embeds: [
+        outcome.success
+          ? EmbedFactory.buildSuccessEmbed(outcome.title, outcome.description)
+          : EmbedFactory.buildErrorEmbed(outcome.title, outcome.description),
+      ],
+    });
   }
 }

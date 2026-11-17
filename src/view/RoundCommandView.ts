@@ -4,16 +4,17 @@ import {
   type ButtonInteraction,
   ButtonStyle,
   type ChatInputCommandInteraction,
-  PermissionFlagsBits,
+  type Guild,
   SlashCommandBuilder,
   UserSelectMenuBuilder,
   type UserSelectMenuInteraction,
 } from 'discord.js';
 import type { RoundController, StageKey } from '../controller/RoundController.js';
-import type { RoundKey } from '../model/Student.js';
+import type { RoundKey, Student } from '../model/Student.js';
 import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { Logger } from '../util/Logger.js';
 import { EmbedFactory } from './EmbedFactory.js';
+import { resolveInteractionMember } from './StudentModalBuilder.js';
 
 /**
  * Custom identifier prefix for confirming a /round promote or /round revoke operation.
@@ -41,14 +42,16 @@ type PendingRoundOperation =
       toStage: StageKey;
       excludeInput: string | null;
       onlyInput: string | null;
+      excludedCount: number;
       expiresAtMs: number;
     }
   | {
       kind: 'REVOKE';
       ownerId: string;
-      round: RoundKey;
+      rounds: RoundKey[];
       excludeInput: string | null;
       onlyInput: string | null;
+      excludedCount: number;
       expiresAtMs: number;
     };
 
@@ -95,7 +98,6 @@ export class RoundCommandView {
     return new SlashCommandBuilder()
       .setName('round')
       .setDescription('Manage recruitment round promotions and revocations (owner only).')
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .addSubcommand((subcommand) =>
         subcommand
           .setName('promote')
@@ -130,12 +132,26 @@ export class RoundCommandView {
       .addSubcommand((subcommand) =>
         subcommand
           .setName('revoke')
-          .setDescription('Bulk remove a round role from eligible members.')
+          .setDescription('Bulk remove one or more round roles from eligible members.')
           .addStringOption((option) =>
             option
               .setName('round')
-              .setDescription('Round role to remove.')
+              .setDescription('Primary round role to remove.')
               .setRequired(true)
+              .addChoices(...roundChoices),
+          )
+          .addStringOption((option) =>
+            option
+              .setName('second-round')
+              .setDescription('Optional second round role to remove.')
+              .setRequired(false)
+              .addChoices(...roundChoices),
+          )
+          .addStringOption((option) =>
+            option
+              .setName('third-round')
+              .setDescription('Optional third round role to remove.')
+              .setRequired(false)
               .addChoices(...roundChoices),
           )
           .addStringOption((option) =>
@@ -185,9 +201,14 @@ export class RoundCommandView {
       return;
     }
 
-    const callerMember = await interaction.guild.members.fetch(interaction.user.id);
+    await interaction.deferReply();
+    const callerMember = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
     if (!this.resourceResolver.isOwnerOrHasOwnerRole(interaction.guild, callerMember)) {
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Owner Authorization Required',
@@ -198,14 +219,11 @@ export class RoundCommandView {
       return;
     }
 
-    await interaction.deferReply();
-
     const subcommand = interaction.options.getSubcommand();
     if (subcommand === 'promote') {
       await this.handlePromoteCommand(interaction);
       return;
     }
-
     if (subcommand === 'revoke') {
       await this.handleRevokeCommand(interaction);
     }
@@ -222,30 +240,7 @@ export class RoundCommandView {
     }
 
     if (interaction.customId.startsWith(ROUND_CANCEL_PREFIX)) {
-      const token = interaction.customId.slice(ROUND_CANCEL_PREFIX.length);
-      const pending = this.pendingOperations.get(token);
-      if (!pending || pending.ownerId !== interaction.user.id) {
-        await interaction.reply({
-          embeds: [
-            EmbedFactory.buildErrorEmbed(
-              'Unauthorized or Expired',
-              'Only the command invoker can cancel this pending operation.',
-            ),
-          ],
-        });
-        return;
-      }
-
-      this.pendingOperations.delete(token);
-      await interaction.update({
-        embeds: [
-          EmbedFactory.buildWarningEmbed(
-            'Operation Cancelled',
-            'The pending `/round` operation was cancelled. No roles or records were modified.',
-          ),
-        ],
-        components: [],
-      });
+      await this.handleCancelButton(interaction);
       return;
     }
 
@@ -254,87 +249,19 @@ export class RoundCommandView {
     }
 
     const token = interaction.customId.slice(ROUND_CONFIRM_PREFIX.length);
-    const pending = this.pendingOperations.get(token);
-
-    if (!pending || pending.ownerId !== interaction.user.id || pending.expiresAtMs < Date.now()) {
-      await interaction.update({
-        embeds: [
-          EmbedFactory.buildErrorEmbed(
-            'Session Expired',
-            'This confirmation prompt has expired. Please run the `/round` command again.',
-          ),
-        ],
-        components: [],
-      });
+    const pending = this.getValidPendingSession(token, interaction.user.id);
+    if (!pending) {
+      await this.renderExpiredSession(interaction);
       return;
     }
 
     this.pendingOperations.delete(token);
     await interaction.deferUpdate();
-
-    if (pending.kind === 'PROMOTE') {
-      const candidates = this.roundController.resolveCandidates(
-        pending.fromStage,
-        pending.excludeInput,
-        pending.onlyInput,
-      );
-      const result = await this.roundController.transitionStudents(
-        interaction.guild,
-        candidates,
-        pending.toStage,
-      );
-      Logger.info('RoundCommandView', 'Completed round promote operation', {
-        callerId: interaction.user.id,
-        fromStage: pending.fromStage,
-        toStage: pending.toStage,
-        updatedCount: result.updatedCount,
-        failedCount: result.failedMembers.length,
-      });
-
-      await interaction.editReply({
-        embeds: [
-          EmbedFactory.buildBatchMutationEmbed(
-            'Round Transition Complete',
-            `Transitioned eligible students from \`${pending.fromStage}\` to \`${pending.toStage}\`.`,
-            result,
-          ),
-        ],
-        components: [],
-      });
-      return;
-    }
-
-    const candidates = this.roundController.resolveCandidates(
-      pending.round,
-      pending.excludeInput,
-      pending.onlyInput,
-    );
-    const result = await this.roundController.revokeRoundFromCandidates(
-      interaction.guild,
-      candidates,
-      pending.round,
-    );
-    Logger.info('RoundCommandView', 'Completed round revoke operation', {
-      callerId: interaction.user.id,
-      round: pending.round,
-      updatedCount: result.updatedCount,
-      failedCount: result.failedMembers.length,
-    });
-
-    await interaction.editReply({
-      embeds: [
-        EmbedFactory.buildBatchMutationEmbed(
-          'Round Role Revoked',
-          `Removed \`${pending.round}\` from eligible members.`,
-          result,
-        ),
-      ],
-      components: [],
-    });
+    await this.executePendingOperation(interaction, interaction.guild, pending);
   }
 
   /**
-   * Handles multi-user UserSelectMenu exclusions for /round promote or /round revoke.
+   * Updates pending exclusion filters when members are selected in the UserSelectMenu.
    *
    * @param interaction the Discord user select menu interaction
    */
@@ -344,13 +271,25 @@ export class RoundCommandView {
     }
 
     const token = interaction.customId.slice(ROUND_EXCLUDE_SELECT_PREFIX.length);
-    const pending = this.pendingOperations.get(token);
-    if (!pending || pending.ownerId !== interaction.user.id || pending.expiresAtMs < Date.now()) {
+    const pending = this.getValidPendingSession(token, interaction.user.id);
+    if (!pending) {
+      await this.renderExpiredSession(interaction);
+      return;
+    }
+
+    const selectedDiscordIds = Array.from(interaction.users.keys());
+    pending.excludeInput = selectedDiscordIds.map((id) => `<@${id}>`).join(' ');
+    pending.excludedCount = selectedDiscordIds.length;
+    pending.expiresAtMs = Date.now() + RoundCommandView.SESSION_TTL_MS;
+
+    const candidates = this.resolveCandidatesForPending(pending);
+    if (candidates.length === 0) {
+      this.pendingOperations.delete(token);
       await interaction.update({
         embeds: [
-          EmbedFactory.buildErrorEmbed(
-            'Session Expired',
-            'This confirmation prompt has expired. Please run the `/round` command again.',
+          EmbedFactory.buildWarningEmbed(
+            'No Eligible Candidates',
+            'All eligible students were excluded by your selection. No changes were applied.',
           ),
         ],
         components: [],
@@ -358,37 +297,82 @@ export class RoundCommandView {
       return;
     }
 
-    this.pendingOperations.delete(token);
-    await interaction.deferUpdate();
+    await interaction.update({
+      embeds: [this.buildConfirmationEmbed(pending, candidates.length)],
+      components: this.buildConfirmationComponents(token, pending, candidates.length, true),
+    });
+  }
 
-    const selectedDiscordIds = Array.from(interaction.users.keys());
-    const excludeMentionString = selectedDiscordIds.map((id) => `<@${id}>`).join(' ');
+  /**
+   * Handles cancellation of a pending /round confirmation prompt.
+   *
+   * @param interaction the Cancel button interaction
+   */
+  private async handleCancelButton(interaction: ButtonInteraction): Promise<void> {
+    const token = interaction.customId.slice(ROUND_CANCEL_PREFIX.length);
+    const pending = this.pendingOperations.get(token);
+    if (!pending || pending.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        embeds: [
+          EmbedFactory.buildErrorEmbed(
+            'Unauthorized or Expired',
+            'Only the command invoker can cancel this pending operation.',
+          ),
+        ],
+      });
+      return;
+    }
+
+    this.pendingOperations.delete(token);
+    await interaction.update({
+      embeds: [
+        EmbedFactory.buildWarningEmbed(
+          'Operation Cancelled',
+          'The pending `/round` operation was cancelled. No roles or records were modified.',
+        ),
+      ],
+      components: [],
+    });
+  }
+
+  /**
+   * Executes a confirmed PROMOTE or REVOKE operation and updates the prompt with results.
+   *
+   * @param interaction the Confirm button interaction
+   * @param guild the target Discord guild
+   * @param pending the validated pending operation state
+   */
+  private async executePendingOperation(
+    interaction: ButtonInteraction,
+    guild: Guild,
+    pending: PendingRoundOperation,
+  ): Promise<void> {
+    const candidates = this.resolveCandidatesForPending(pending);
 
     if (pending.kind === 'PROMOTE') {
-      const candidates = this.roundController.resolveCandidates(
-        pending.fromStage,
-        excludeMentionString,
-        null,
-      );
       const result = await this.roundController.transitionStudents(
-        interaction.guild,
+        guild,
         candidates,
         pending.toStage,
       );
-      Logger.info('RoundCommandView', 'Completed round promote with select exclusions', {
+      Logger.info('RoundCommandView', 'Completed round promote operation', {
         callerId: interaction.user.id,
         fromStage: pending.fromStage,
         toStage: pending.toStage,
-        excludedCount: selectedDiscordIds.length,
+        excludedCount: pending.excludedCount,
         updatedCount: result.updatedCount,
         failedCount: result.failedMembers.length,
       });
 
+      const excludeNote =
+        pending.excludedCount > 0
+          ? ` excluding \`${pending.excludedCount}\` selected member(s)`
+          : '';
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildBatchMutationEmbed(
             'Round Transition Complete',
-            `Transitioned students from \`${pending.fromStage}\` to \`${pending.toStage}\` excluding \`${selectedDiscordIds.length}\` selected member(s).`,
+            `Transitioned eligible students from \`${pending.fromStage}\` to \`${pending.toStage}\`${excludeNote}.`,
             result,
           ),
         ],
@@ -397,29 +381,27 @@ export class RoundCommandView {
       return;
     }
 
-    const candidates = this.roundController.resolveCandidates(
-      pending.round,
-      excludeMentionString,
-      null,
-    );
-    const result = await this.roundController.revokeRoundFromCandidates(
-      interaction.guild,
+    const result = await this.roundController.revokeRoundsFromCandidates(
+      guild,
       candidates,
-      pending.round,
+      pending.rounds,
     );
-    Logger.info('RoundCommandView', 'Completed round revoke with select exclusions', {
+    const roundsLabel = pending.rounds.join(', ');
+    Logger.info('RoundCommandView', 'Completed round revoke operation', {
       callerId: interaction.user.id,
-      round: pending.round,
-      excludedCount: selectedDiscordIds.length,
+      rounds: pending.rounds,
+      excludedCount: pending.excludedCount,
       updatedCount: result.updatedCount,
       failedCount: result.failedMembers.length,
     });
 
+    const excludeNote =
+      pending.excludedCount > 0 ? ` excluding \`${pending.excludedCount}\` selected member(s)` : '';
     await interaction.editReply({
       embeds: [
         EmbedFactory.buildBatchMutationEmbed(
-          'Round Role Revoked',
-          `Removed \`${pending.round}\` from eligible members excluding \`${selectedDiscordIds.length}\` selected member(s).`,
+          'Round Roles Revoked',
+          `Removed \`${roundsLabel}\` from eligible members${excludeNote}.`,
           result,
         ),
       ],
@@ -477,50 +459,26 @@ export class RoundCommandView {
 
     this.pruneExpiredSessions();
     const token = `${interaction.user.id}-${Date.now()}`;
-    this.pendingOperations.set(token, {
+    const pending: PendingRoundOperation = {
       kind: 'PROMOTE',
       ownerId: interaction.user.id,
       fromStage,
       toStage,
       excludeInput,
       onlyInput,
+      excludedCount: 0,
       expiresAtMs: Date.now() + RoundCommandView.SESSION_TTL_MS,
-    });
-
-    const components: Array<
-      ActionRowBuilder<UserSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
-    > = [];
-
-    if (!excludeInput && !onlyInput) {
-      const excludeSelect = new UserSelectMenuBuilder()
-        .setCustomId(`${ROUND_EXCLUDE_SELECT_PREFIX}${token}`)
-        .setPlaceholder('Optional: select members to EXCLUDE, then submit')
-        .setMinValues(1)
-        .setMaxValues(25);
-      components.push(new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(excludeSelect));
-    }
-
-    const confirmButton = new ButtonBuilder()
-      .setCustomId(`${ROUND_CONFIRM_PREFIX}${token}`)
-      .setLabel(`Confirm Transition (${candidates.length})`)
-      .setStyle(ButtonStyle.Success);
-    const cancelButton = new ButtonBuilder()
-      .setCustomId(`${ROUND_CANCEL_PREFIX}${token}`)
-      .setLabel('Cancel')
-      .setStyle(ButtonStyle.Secondary);
-
-    components.push(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton, cancelButton),
-    );
+    };
+    this.pendingOperations.set(token, pending);
 
     await interaction.editReply({
-      embeds: [
-        EmbedFactory.buildInfoEmbed(
-          'Confirm Round Transition',
-          `Ready to transition \`${candidates.length}\` student(s) from \`${fromStage}\` to \`${toStage}\`.\n\nClick **Confirm** to apply changes to Discord and SQLite, or **Cancel** to abort.`,
-        ),
-      ],
-      components,
+      embeds: [this.buildConfirmationEmbed(pending, candidates.length)],
+      components: this.buildConfirmationComponents(
+        token,
+        pending,
+        candidates.length,
+        !excludeInput && !onlyInput,
+      ),
     });
   }
 
@@ -530,7 +488,16 @@ export class RoundCommandView {
    * @param interaction the slash command interaction
    */
   private async handleRevokeCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    const round = interaction.options.getString('round', true) as RoundKey;
+    const firstRound = interaction.options.getString('round', true) as RoundKey;
+    const secondRound = interaction.options.getString('second-round') as RoundKey | null;
+    const thirdRound = interaction.options.getString('third-round') as RoundKey | null;
+    const rounds = Array.from(
+      new Set<RoundKey>([
+        firstRound,
+        ...(secondRound ? [secondRound] : []),
+        ...(thirdRound ? [thirdRound] : []),
+      ]),
+    );
     const excludeInput = interaction.options.getString('exclude');
     const onlyInput = interaction.options.getString('only');
 
@@ -546,13 +513,17 @@ export class RoundCommandView {
       return;
     }
 
-    const candidates = this.roundController.resolveCandidates(round, excludeInput, onlyInput);
+    const candidates = this.roundController.resolveCandidatesForRounds(
+      rounds,
+      excludeInput,
+      onlyInput,
+    );
     if (candidates.length === 0) {
       await interaction.editReply({
         embeds: [
           EmbedFactory.buildWarningEmbed(
             'No Eligible Candidates',
-            `No verified students currently hold \`${round}\` with the provided filters.`,
+            `No verified students currently hold \`${rounds.join(', ')}\` with the provided filters.`,
           ),
         ],
       });
@@ -561,32 +532,115 @@ export class RoundCommandView {
 
     this.pruneExpiredSessions();
     const token = `${interaction.user.id}-${Date.now()}`;
-    this.pendingOperations.set(token, {
+    const pending: PendingRoundOperation = {
       kind: 'REVOKE',
       ownerId: interaction.user.id,
-      round,
+      rounds,
       excludeInput,
       onlyInput,
+      excludedCount: 0,
       expiresAtMs: Date.now() + RoundCommandView.SESSION_TTL_MS,
-    });
+    };
+    this.pendingOperations.set(token, pending);
 
+    await interaction.editReply({
+      embeds: [this.buildConfirmationEmbed(pending, candidates.length)],
+      components: this.buildConfirmationComponents(
+        token,
+        pending,
+        candidates.length,
+        !excludeInput && !onlyInput,
+      ),
+    });
+  }
+
+  /**
+   * Resolves candidates matching a pending PROMOTE or REVOKE session.
+   *
+   * @param pending the pending operation state
+   * @returns filtered Student array
+   */
+  private resolveCandidatesForPending(pending: PendingRoundOperation): Student[] {
+    if (pending.kind === 'PROMOTE') {
+      return this.roundController.resolveCandidates(
+        pending.fromStage,
+        pending.excludeInput,
+        pending.onlyInput,
+      );
+    }
+    return this.roundController.resolveCandidatesForRounds(
+      pending.rounds,
+      pending.excludeInput,
+      pending.onlyInput,
+    );
+  }
+
+  /**
+   * Builds the confirmation embed reflecting the current target count and any selected exclusions.
+   *
+   * @param pending the pending operation state
+   * @param candidateCount number of students affected
+   * @returns configured EmbedBuilder instance
+   */
+  private buildConfirmationEmbed(pending: PendingRoundOperation, candidateCount: number) {
+    const excludeLine =
+      pending.excludedCount > 0
+        ? `\nExcluded via menu: \`${pending.excludedCount}\` member(s).`
+        : '';
+
+    if (pending.kind === 'PROMOTE') {
+      return EmbedFactory.buildInfoEmbed(
+        'Confirm Round Transition',
+        `Ready to transition \`${candidateCount}\` student(s) from \`${pending.fromStage}\` to \`${pending.toStage}\`.${excludeLine}\n\nClick **Confirm** to apply changes to Discord and SQLite, or **Cancel** to abort.`,
+      );
+    }
+
+    return EmbedFactory.buildInfoEmbed(
+      'Confirm Round Revocation',
+      `Ready to remove \`${pending.rounds.join(', ')}\` from \`${candidateCount}\` student(s).${excludeLine}\n\nClick **Confirm** to apply changes to Discord and SQLite, or **Cancel** to abort.`,
+    );
+  }
+
+  /**
+   * Builds the confirmation action rows including optional UserSelectMenu and Confirm/Cancel buttons.
+   *
+   * @param token session token
+   * @param pending the pending operation state
+   * @param candidateCount current affected student count
+   * @param includeExcludeSelect whether to include the UserSelectMenu
+   * @returns array of Discord ActionRowBuilder instances
+   */
+  private buildConfirmationComponents(
+    token: string,
+    pending: PendingRoundOperation,
+    candidateCount: number,
+    includeExcludeSelect: boolean,
+  ): Array<ActionRowBuilder<UserSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>> {
     const components: Array<
       ActionRowBuilder<UserSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
     > = [];
 
-    if (!excludeInput && !onlyInput) {
+    if (includeExcludeSelect) {
+      const placeholder =
+        pending.kind === 'PROMOTE'
+          ? 'Optional: select members to EXCLUDE before confirming'
+          : 'Optional: select members to EXCLUDE before confirming';
       const excludeSelect = new UserSelectMenuBuilder()
         .setCustomId(`${ROUND_EXCLUDE_SELECT_PREFIX}${token}`)
-        .setPlaceholder('Optional: select members to EXCLUDE from revocation')
-        .setMinValues(1)
+        .setPlaceholder(placeholder)
+        .setMinValues(0)
         .setMaxValues(25);
       components.push(new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(excludeSelect));
     }
 
     const confirmButton = new ButtonBuilder()
       .setCustomId(`${ROUND_CONFIRM_PREFIX}${token}`)
-      .setLabel(`Confirm Revoke (${candidates.length})`)
-      .setStyle(ButtonStyle.Danger);
+      .setLabel(
+        pending.kind === 'PROMOTE'
+          ? `Confirm Transition (${candidateCount})`
+          : `Confirm Revoke (${candidateCount})`,
+      )
+      .setStyle(pending.kind === 'PROMOTE' ? ButtonStyle.Success : ButtonStyle.Danger);
     const cancelButton = new ButtonBuilder()
       .setCustomId(`${ROUND_CANCEL_PREFIX}${token}`)
       .setLabel('Cancel')
@@ -595,15 +649,40 @@ export class RoundCommandView {
     components.push(
       new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton, cancelButton),
     );
+    return components;
+  }
 
-    await interaction.editReply({
+  /**
+   * Retrieves a pending operation if it belongs to callerId and has not expired.
+   *
+   * @param token the session token
+   * @param callerId the interacting Discord user ID
+   * @returns the PendingRoundOperation or null when invalid or expired
+   */
+  private getValidPendingSession(token: string, callerId: string): PendingRoundOperation | null {
+    const pending = this.pendingOperations.get(token);
+    if (!pending || pending.ownerId !== callerId || pending.expiresAtMs < Date.now()) {
+      return null;
+    }
+    return pending;
+  }
+
+  /**
+   * Renders an expired session notice and clears interactive components.
+   *
+   * @param interaction the button or select menu interaction
+   */
+  private async renderExpiredSession(
+    interaction: ButtonInteraction | UserSelectMenuInteraction,
+  ): Promise<void> {
+    await interaction.update({
       embeds: [
-        EmbedFactory.buildInfoEmbed(
-          'Confirm Round Revocation',
-          `Ready to remove \`${round}\` from \`${candidates.length}\` student(s).\n\nClick **Confirm** to apply changes to Discord and SQLite, or **Cancel** to abort.`,
+        EmbedFactory.buildErrorEmbed(
+          'Session Expired',
+          'This confirmation prompt has expired. Please run the `/round` command again.',
         ),
       ],
-      components,
+      components: [],
     });
   }
 

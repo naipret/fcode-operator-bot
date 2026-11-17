@@ -5,7 +5,6 @@ import {
   ChannelType,
   type ChatInputCommandInteraction,
   type Guild,
-  PermissionFlagsBits,
   SlashCommandBuilder,
 } from 'discord.js';
 import type { AppConfig } from '../config/ConfigSchema.js';
@@ -15,6 +14,7 @@ import type { GuildResourceResolver } from '../util/GuildResourceResolver.js';
 import { InputValidator } from '../util/InputValidator.js';
 import { Logger } from '../util/Logger.js';
 import { EmbedFactory } from './EmbedFactory.js';
+import { resolveInteractionMember } from './StudentModalBuilder.js';
 import { VERIFY_PANEL_BUTTON_ID } from './VerifyCommandView.js';
 
 /**
@@ -79,7 +79,6 @@ export class SystemCommandView {
       .setDescription(
         'Manage bot verification gate, database sync, and configuration (owner only).',
       )
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .addSubcommand((subcommand) =>
         subcommand
           .setName('verify')
@@ -134,9 +133,14 @@ export class SystemCommandView {
       return;
     }
 
-    const callerMember = await interaction.guild.members.fetch(interaction.user.id);
+    await interaction.deferReply();
+    const callerMember = await resolveInteractionMember(
+      interaction.guild,
+      interaction.member,
+      interaction.user.id,
+    );
     if (!this.resourceResolver.isOwnerOrHasOwnerRole(interaction.guild, callerMember)) {
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [
           EmbedFactory.buildErrorEmbed(
             'Owner Authorization Required',
@@ -146,8 +150,6 @@ export class SystemCommandView {
       });
       return;
     }
-
-    await interaction.deferReply();
 
     const subcommand = interaction.options.getSubcommand();
     if (subcommand === 'verify') {

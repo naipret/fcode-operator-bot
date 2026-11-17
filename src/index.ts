@@ -165,12 +165,7 @@ async function bootstrap(): Promise<void> {
     lockedDiscordIds,
   );
 
-  const verifyView = new VerifyCommandView(
-    activeConfig,
-    studentRepository,
-    verificationController,
-    resourceResolver,
-  );
+  const verifyView = new VerifyCommandView(activeConfig, studentRepository, verificationController);
   const studentView = new StudentCommandView(activeConfig, studentController, resourceResolver);
   const roundView = new RoundCommandView(roundController, resourceResolver);
 
